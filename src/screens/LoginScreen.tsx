@@ -35,9 +35,10 @@ interface LoginScreenProps {
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
   const { login, loginWithCredentials, users } = useApp();
-  const [mobileOrEmail, setMobileOrEmail] = useState('+91 98301 23456');
+  const [mobileOrEmail, setMobileOrEmail] = useState('');
   const [otpOrPassword, setOtpOrPassword] = useState('');
-  const [isOtpMode, setIsOtpMode] = useState(true);
+  // Mobile & OTP login is disabled — password login is the only supported mode.
+  const isOtpMode = false;
   const [otpSent, setOtpSent] = useState(false);
   const [demoOtp, setDemoOtp] = useState('123456');
   const [timer, setTimer] = useState(30);
@@ -90,11 +91,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       setOtpSent(true);
       setTimer(30);
       setDemoOtp('123456');
-      setOtpOrPassword('123456'); // Auto-fill for convenience in demo testing
       showToast(
         'success',
-        'OTP Sent (Demo: 123456)',
-        `A 6-digit OTP code was sent to ${mobileOrEmail.trim()} and filled below.`
+        'OTP Sent',
+        `A 6-digit OTP code was sent to ${mobileOrEmail.trim()}.`
       );
     }, 850);
   };
@@ -106,11 +106,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       setIsResendingOtp(false);
       setTimer(30);
       setDemoOtp('123456');
-      setOtpOrPassword('123456');
       showToast(
         'success',
         'New OTP Sent',
-        `A new 6-digit OTP code (123456) was sent to ${mobileOrEmail.trim()}.`
+        `A new 6-digit OTP code was sent to ${mobileOrEmail.trim()}.`
       );
     }, 750);
   };
@@ -122,7 +121,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
     }
 
     if (isOtpMode && !otpOrPassword.trim()) {
-      showToast('warning', 'OTP Required', 'Please enter the 6-digit OTP code (123456).');
+      showToast('warning', 'OTP Required', 'Please enter the 6-digit OTP code.');
       return;
     }
 
@@ -229,32 +228,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
               >
                 {/* Input Method Toggle */}
                 <View style={styles.toggleRow}>
-                  <TouchableOpacity
-                    style={[styles.toggleBtn, isOtpMode && styles.toggleBtnActive]}
-                    onPress={() => {
-                      setIsOtpMode(true);
-                      setOtpSent(false);
-                      setMobileOrEmail('+91 98301 23456');
-                      setOtpOrPassword('');
-                    }}
+                  <View
+                    style={[styles.toggleBtn, styles.toggleBtnDisabled]}
+                    accessibilityLabel="Mobile and OTP login is currently unavailable"
                   >
-                    <Text style={[styles.toggleBtnText, isOtpMode && styles.toggleBtnTextActive]}>
+                    <Text style={[styles.toggleBtnText, styles.toggleBtnTextDisabled]}>
                       Mobile & OTP
                     </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.toggleBtn, !isOtpMode && styles.toggleBtnActive]}
-                    onPress={() => {
-                      setIsOtpMode(false);
-                      // Prefill a seeded backend account for quick testing.
-                      setMobileOrEmail('john.doe@curatedtable.com');
-                      setOtpOrPassword('Member@123');
-                    }}
-                  >
-                    <Text style={[styles.toggleBtnText, !isOtpMode && styles.toggleBtnTextActive]}>
+                  </View>
+                  <View style={[styles.toggleBtn, styles.toggleBtnActive]}>
+                    <Text style={[styles.toggleBtnText, styles.toggleBtnTextActive]}>
                       Password Login
                     </Text>
-                  </TouchableOpacity>
+                  </View>
                 </View>
 
                 {/* Mobile / Email Input Group */}
@@ -367,7 +353,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                             showToast(
                               'info',
                               'Reset Password',
-                              'Please switch to Mobile & OTP mode to log in securely or contact the council administrator.'
+                              'Please contact the council administrator to reset your account password.'
                             )
                           }
                         >
@@ -619,6 +605,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 3,
     elevation: 1,
+  },
+  toggleBtnDisabled: {
+    opacity: 0.45,
+  },
+  toggleBtnTextDisabled: {
+    color: colors.textMuted,
   },
   toggleBtnText: {
     fontSize: 11.5,
