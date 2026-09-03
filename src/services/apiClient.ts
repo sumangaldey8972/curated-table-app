@@ -12,11 +12,17 @@ import { tokenStorage } from '../utils/tokenStorage';
 
 export class ApiError extends Error {
   status: number;
+  /** Machine-readable error code from the backend (e.g. "EMAIL_NOT_VERIFIED"). */
+  code?: string;
+  /** The full parsed error payload, for the odd case that carries extra fields. */
+  details?: Record<string, unknown>;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code?: string, details?: Record<string, unknown>) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.code = code;
+    this.details = details;
   }
 }
 
@@ -25,6 +31,7 @@ interface ApiEnvelope<T> {
   message: string;
   data?: T;
   error?: string;
+  code?: string;
 }
 
 interface RequestOptions {
@@ -84,7 +91,12 @@ export async function apiRequest<T = unknown>(
   if (!response.ok || !payload || payload.success === false) {
     const message =
       payload?.message || `Request failed (${response.status}). Please try again.`;
-    throw new ApiError(message, response.status);
+    throw new ApiError(
+      message,
+      response.status,
+      payload?.code,
+      payload ? (payload as unknown as Record<string, unknown>) : undefined
+    );
   }
 
   return payload.data as T;

@@ -38,6 +38,93 @@ export function getMeRequest() {
   return apiRequest<BackendUser>('/auth/me', { method: 'GET' });
 }
 
+const normEmail = (email: string) => email.trim().toLowerCase();
+
+/** Backend error code returned by /auth/login when the account is unverified. */
+export const EMAIL_NOT_VERIFIED = 'EMAIL_NOT_VERIFIED';
+
+/**
+ * POST /api/auth/verify-otp (type: email_verification) — checks the code WITHOUT
+ * consuming it, so the client can then offer an optional "set new password" step.
+ * The code is spent by completeVerificationRequest.
+ */
+export function verifyEmailOtpRequest(email: string, otp: string) {
+  return apiRequest<{ verified: boolean }>('/auth/verify-otp', {
+    method: 'POST',
+    auth: false,
+    body: { email: normEmail(email), otp: otp.trim(), type: 'email_verification' },
+  });
+}
+
+/**
+ * POST /api/auth/complete-verification — consumes the email-verification code,
+ * flips isEmailVerified to true, and optionally sets a new password. Omit
+ * `newPassword` to keep the administrator-assigned password.
+ */
+export function completeVerificationRequest(
+  email: string,
+  otp: string,
+  newPassword?: string
+) {
+  return apiRequest<BackendUser>('/auth/complete-verification', {
+    method: 'POST',
+    auth: false,
+    body: {
+      email: normEmail(email),
+      otp: otp.trim(),
+      ...(newPassword ? { newPassword } : {}),
+    },
+  });
+}
+
+/** POST /api/auth/resend-otp (type: email_verification) — sends a fresh code. */
+export function resendEmailOtpRequest(email: string) {
+  return apiRequest<{ expiresAt: string }>('/auth/resend-otp', {
+    method: 'POST',
+    auth: false,
+    body: { email: normEmail(email), type: 'email_verification' },
+  });
+}
+
+/** POST /api/auth/forgot-password — emails a 6-digit reset code (valid 2 min). */
+export function forgotPasswordRequest(email: string) {
+  return apiRequest<{ expiresAt: string }>('/auth/forgot-password', {
+    method: 'POST',
+    auth: false,
+    body: { email: normEmail(email) },
+  });
+}
+
+/**
+ * POST /api/auth/verify-otp (type: forgot_password) — checks the reset code
+ * WITHOUT consuming it. The code is spent later by resetPasswordRequest.
+ */
+export function verifyResetOtpRequest(email: string, otp: string) {
+  return apiRequest<{ verified: boolean }>('/auth/verify-otp', {
+    method: 'POST',
+    auth: false,
+    body: { email: normEmail(email), otp: otp.trim(), type: 'forgot_password' },
+  });
+}
+
+/** POST /api/auth/resend-otp (type: forgot_password) — sends a fresh reset code. */
+export function resendResetOtpRequest(email: string) {
+  return apiRequest<{ expiresAt: string }>('/auth/resend-otp', {
+    method: 'POST',
+    auth: false,
+    body: { email: normEmail(email), type: 'forgot_password' },
+  });
+}
+
+/** POST /api/auth/reset-password — consumes the code and sets the new password. */
+export function resetPasswordRequest(email: string, otp: string, newPassword: string) {
+  return apiRequest<null>('/auth/reset-password', {
+    method: 'POST',
+    auth: false,
+    body: { email: normEmail(email), otp: otp.trim(), newPassword },
+  });
+}
+
 /**
  * Maps a lean backend user onto the rich frontend `User` model the UI expects.
  * Fields the backend does not track yet are filled with neutral placeholders

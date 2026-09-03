@@ -27,6 +27,7 @@ import { useApp } from '../context/AppContext';
 import { User } from '../types';
 import { BrandLogo } from '../components/BrandLogo';
 import { PremiumToast, ToastType } from '../components/PremiumToast';
+import { EMAIL_NOT_VERIFIED } from '../services/authApi';
 import { BlurView } from 'expo-blur';
 
 interface LoginScreenProps {
@@ -156,6 +157,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
       await loginWithCredentials(mobileOrEmail.trim(), otpOrPassword);
       // On success the navigator swaps to the authenticated stack automatically.
     } catch (error: any) {
+      // Unverified account → send the member through email verification first.
+      if (error?.code === EMAIL_NOT_VERIFIED) {
+        const email =
+          (error?.details?.email as string | undefined) || mobileOrEmail.trim();
+        showToast('info', 'Verify Your Email', 'We sent a 6-digit code to your email.');
+        navigation.navigate('VerifyEmail', { email });
+        return;
+      }
       showToast(
         'error',
         'Sign In Failed',
@@ -348,15 +357,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ navigation }) => {
                     <View style={styles.inputGroup}>
                       <View style={styles.labelRow}>
                         <Text style={styles.inputLabel}>PASSWORD</Text>
-                        <TouchableOpacity
-                          onPress={() =>
-                            showToast(
-                              'info',
-                              'Reset Password',
-                              'Please contact the council administrator to reset your account password.'
-                            )
-                          }
-                        >
+                        <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
                           <Text style={styles.forgotText}>Forgot?</Text>
                         </TouchableOpacity>
                       </View>

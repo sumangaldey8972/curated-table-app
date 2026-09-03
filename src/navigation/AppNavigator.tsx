@@ -17,6 +17,8 @@ import { MeetingSummaryScreen } from '../screens/MeetingSummaryScreen';
 import { EventsScreen } from '../screens/EventsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
+import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
+import { VerifyEmailScreen } from '../screens/VerifyEmailScreen';
 import { CustomSplashScreen } from '../screens/CustomSplashScreen';
 import { AdminConsoleScreen } from '../screens/admin/AdminConsoleScreen';
 
@@ -127,6 +129,8 @@ export const AppNavigator: React.FC = () => {
             <Stack.Group>
               <Stack.Screen name="Login" component={LoginScreen} />
               <Stack.Screen name="SignUp" component={SignUpScreen} />
+              <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+              <Stack.Screen name="VerifyEmail" component={VerifyEmailScreen} />
             </Stack.Group>
           )}
         </Stack.Navigator>
