@@ -35,9 +35,26 @@ interface DrawerModalProps {
 }
 
 export const DrawerModal: React.FC<DrawerModalProps> = ({ onNavigate }) => {
-  const { showDrawer, closeDrawer, currentUser, logout, openDigitalBusinessCard } = useApp();
+  const { showDrawer, closeDrawer, currentUser, logout, openDigitalBusinessCard, isAdmin } = useApp();
 
   if (!showDrawer) return null;
+
+  const adminMenuItems = isAdmin
+    ? [
+        {
+          id: 'admin-console',
+          label: 'Admin Console',
+          sublabel: 'Manage members, roles & council administration',
+          icon: ShieldCheck,
+          color: colors.crimson,
+          bgColor: colors.crimsonLight,
+          action: () => {
+            closeDrawer();
+            onNavigate('AdminConsole');
+          },
+        },
+      ]
+    : [];
 
   const menuItems = [
     {
@@ -117,6 +134,29 @@ export const DrawerModal: React.FC<DrawerModalProps> = ({ onNavigate }) => {
     },
   ];
 
+  type MenuEntry = (typeof menuItems)[number];
+
+  const renderMenuItem = (item: MenuEntry) => {
+    const Icon = item.icon;
+    return (
+      <TouchableOpacity
+        key={item.id}
+        style={styles.menuItem}
+        onPress={item.action}
+        activeOpacity={0.7}
+      >
+        <View style={[styles.menuIconBox, { backgroundColor: item.bgColor }]}>
+          <Icon color={item.color} size={18} />
+        </View>
+        <View style={styles.menuTextCol}>
+          <Text style={styles.menuTitle}>{item.label}</Text>
+          <Text style={styles.menuSub}>{item.sublabel}</Text>
+        </View>
+        <ChevronRight color={colors.textMuted} size={16} />
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <Modal visible={showDrawer} transparent animationType="fade" onRequestClose={closeDrawer}>
       <View style={styles.overlay}>
@@ -178,27 +218,15 @@ export const DrawerModal: React.FC<DrawerModalProps> = ({ onNavigate }) => {
 
           {/* Menu Items List */}
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.menuScroll}>
+            {adminMenuItems.length > 0 && (
+              <>
+                <Text style={styles.menuSectionHeader}>ADMINISTRATION</Text>
+                {adminMenuItems.map(renderMenuItem)}
+              </>
+            )}
+
             <Text style={styles.menuSectionHeader}>COUNCIL MENU</Text>
-            {menuItems.map(item => {
-              const Icon = item.icon;
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.menuItem}
-                  onPress={item.action}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.menuIconBox, { backgroundColor: item.bgColor }]}>
-                    <Icon color={item.color} size={18} />
-                  </View>
-                  <View style={styles.menuTextCol}>
-                    <Text style={styles.menuTitle}>{item.label}</Text>
-                    <Text style={styles.menuSub}>{item.sublabel}</Text>
-                  </View>
-                  <ChevronRight color={colors.textMuted} size={16} />
-                </TouchableOpacity>
-              );
-            })}
+            {menuItems.map(renderMenuItem)}
 
             {/* Secretariat Information Box */}
             <View style={styles.secretariatBox}>

@@ -52,6 +52,8 @@ interface AppContextType {
   isAuthenticated: boolean;
   /** True while a persisted session is being restored on app launch. */
   isBootstrappingAuth: boolean;
+  /** True when the signed-in user carries the backend 'admin' role. */
+  isAdmin: boolean;
 
   // Modal State
   activeStory: Story | null;
@@ -138,6 +140,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [requestedAdminAccessIds, setRequestedAdminAccessIds] = useState<string[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isBootstrappingAuth, setIsBootstrappingAuth] = useState<boolean>(true);
+
+  const isAdmin = (currentUser.roles ?? []).includes('admin');
 
   // Modals state
   const [activeStory, setActiveStory] = useState<Story | null>(null);
@@ -641,6 +645,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         requestedAdminAccessIds,
         isAuthenticated,
         isBootstrappingAuth,
+        isAdmin,
 
         activeStory,
         showStoryViewer,

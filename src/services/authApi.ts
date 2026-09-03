@@ -56,6 +56,7 @@ export function adaptBackendUser(backend: BackendUser): User {
   return {
     id: backend._id,
     name: fullName,
+    roles: (backend.roles ?? []).map(r => r.name).filter(Boolean),
     designation: 'Director',
     companyName: 'Business Enterprises',
     industry: 'Manufacturing',

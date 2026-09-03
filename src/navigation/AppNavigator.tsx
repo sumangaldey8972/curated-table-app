@@ -18,6 +18,7 @@ import { EventsScreen } from '../screens/EventsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
 import { CustomSplashScreen } from '../screens/CustomSplashScreen';
+import { AdminConsoleScreen } from '../screens/admin/AdminConsoleScreen';
 
 import { StoryViewerModal } from '../components/StoryViewerModal';
 import { DigitalBusinessCardModal } from '../components/DigitalBusinessCardModal';
@@ -90,7 +91,7 @@ const MainTabs = () => {
 };
 
 export const AppNavigator: React.FC = () => {
-  const { isAuthenticated, isBootstrappingAuth } = useApp();
+  const { isAuthenticated, isBootstrappingAuth, isAdmin } = useApp();
   const [isSplashVisible, setIsSplashVisible] = useState(true);
 
   const handleDrawerNavigate = (screenName: string) => {
@@ -118,6 +119,9 @@ export const AppNavigator: React.FC = () => {
               <Stack.Screen name="Profile" component={ProfileScreen} />
               <Stack.Screen name="MeetingSummary" component={MeetingSummaryScreen} />
               <Stack.Screen name="Events" component={EventsScreen} />
+              {isAdmin && (
+                <Stack.Screen name="AdminConsole" component={AdminConsoleScreen} />
+              )}
             </Stack.Group>
           ) : (
             <Stack.Group>

@@ -23,6 +23,8 @@ export interface User {
   };
   isFollowed?: boolean;
   hasActiveStory?: boolean;
+  /** Backend role names (e.g. ['admin', 'member']). Present for API-authenticated users. */
+  roles?: string[];
   stats: {
     oneToOneCount: number;
     referralsGiven: number;
