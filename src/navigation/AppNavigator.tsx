@@ -19,6 +19,7 @@ import { LoginScreen } from '../screens/LoginScreen';
 import { SignUpScreen } from '../screens/SignUpScreen';
 import { ForgotPasswordScreen } from '../screens/ForgotPasswordScreen';
 import { VerifyEmailScreen } from '../screens/VerifyEmailScreen';
+import { ProfileSetupScreen } from '../screens/ProfileSetupScreen';
 import { CustomSplashScreen } from '../screens/CustomSplashScreen';
 import { AdminConsoleScreen } from '../screens/admin/AdminConsoleScreen';
 
@@ -93,7 +94,7 @@ const MainTabs = () => {
 };
 
 export const AppNavigator: React.FC = () => {
-  const { isAuthenticated, isBootstrappingAuth, isAdmin } = useApp();
+  const { isAuthenticated, isBootstrappingAuth, isAdmin, isProfileApproved } = useApp();
   const [isSplashVisible, setIsSplashVisible] = useState(true);
 
   const handleDrawerNavigate = (screenName: string) => {
@@ -115,7 +116,7 @@ export const AppNavigator: React.FC = () => {
             animation: 'fade_from_bottom',
           }}
         >
-          {isAuthenticated ? (
+          {isAuthenticated && isProfileApproved ? (
             <Stack.Group>
               <Stack.Screen name="MainTabs" component={MainTabs} />
               <Stack.Screen name="Profile" component={ProfileScreen} />
@@ -124,6 +125,11 @@ export const AppNavigator: React.FC = () => {
               {isAdmin && (
                 <Stack.Screen name="AdminConsole" component={AdminConsoleScreen} />
               )}
+            </Stack.Group>
+          ) : isAuthenticated ? (
+            <Stack.Group>
+              {/* Profile-details gate: no app access until an admin approves. */}
+              <Stack.Screen name="ProfileSetup" component={ProfileSetupScreen} />
             </Stack.Group>
           ) : (
             <Stack.Group>
@@ -136,7 +142,7 @@ export const AppNavigator: React.FC = () => {
         </Stack.Navigator>
 
         {/* Global Modals */}
-        {isAuthenticated && (
+        {isAuthenticated && isProfileApproved && (
           <>
             <StoryViewerModal />
             <DigitalBusinessCardModal />

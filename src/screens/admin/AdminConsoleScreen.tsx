@@ -32,10 +32,18 @@ import {
   deriveRoles,
   memberFullName,
 } from '../../services/adminApi';
+import {
+  AdminProfileReview,
+  listProfileReviewsRequest,
+  getProfileForAdminRequest,
+  reviewProfileRequest,
+} from '../../services/profileApi';
 import { AdminOverview } from './AdminOverview';
 import { AdminMembersList } from './AdminMembersList';
 import { AdminRolesList } from './AdminRolesList';
 import { AdminPendingList } from './AdminPendingList';
+import { AdminProfileReviews } from './AdminProfileReviews';
+import { AdminProfileReviewModal } from './AdminProfileReviewModal';
 import { AdminMemberFormModal } from './AdminMemberFormModal';
 import { AdminRoleFormModal } from './AdminRoleFormModal';
 import { AdminDrawerModal, AdminSection, adminSectionLabel } from './AdminDrawerModal';
@@ -57,6 +65,11 @@ export const AdminConsoleScreen: React.FC = () => {
   const [editingMember, setEditingMember] = useState<AdminMember | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
+
+  const [profileReviews, setProfileReviews] = useState<AdminProfileReview[]>([]);
+  const [selectedReview, setSelectedReview] = useState<AdminProfileReview | null>(null);
+  const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [reviewSubmitting, setReviewSubmitting] = useState(false);
 
   const [roleFormOpen, setRoleFormOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -85,19 +98,27 @@ export const AdminConsoleScreen: React.FC = () => {
     () => members.filter(m => !m.isEmailVerified).length,
     [members]
   );
+  const pendingReviewCount = useMemo(
+    () => profileReviews.filter(r => r.status === 'submitted' || r.status === 'under_review').length,
+    [profileReviews]
+  );
 
   const load = useCallback(async (mode: 'initial' | 'refresh' = 'initial') => {
     if (mode === 'refresh') setRefreshing(true);
     else setLoading(true);
     setError(null);
     try {
-      const [memberData, roleResult] = await Promise.all([
+      const [memberData, roleResult, reviewResult] = await Promise.all([
         listMembers(),
         listRoles().catch(() => null), // roles are non-fatal — fall back below
+        listProfileReviewsRequest(['submitted', 'under_review', 'approved', 'rejected']).catch(
+          () => [] as AdminProfileReview[]
+        ),
       ]);
       const nextMembers = Array.isArray(memberData) ? memberData : [];
       setMembers(nextMembers);
       setRoles(roleResult ?? deriveRoles(nextMembers));
+      setProfileReviews(Array.isArray(reviewResult) ? reviewResult : []);
     } catch (err: any) {
       setError(err?.message || 'Could not load the Admin Console.');
     } finally {
@@ -221,6 +242,40 @@ export const AdminConsoleScreen: React.FC = () => {
       showToast('error', 'Could Not Verify Member', err?.message || 'Please try again.');
     } finally {
       setVerifyingId(null);
+    }
+  };
+
+  // --- Profile reviews ---
+  const openReview = async (userId: string) => {
+    try {
+      const full = await getProfileForAdminRequest(userId);
+      setSelectedReview(full);
+      setReviewModalOpen(true);
+    } catch (err: any) {
+      showToast('error', 'Could Not Open Profile', err?.message || 'Please try again.');
+    }
+  };
+
+  const handleDecision = async (
+    status: 'approved' | 'rejected' | 'under_review',
+    note: string
+  ) => {
+    if (status === 'rejected' && !note.trim()) {
+      showToast('warning', 'Reason Required', 'Add a note explaining what needs to change.');
+      return;
+    }
+    if (!selectedReview) return;
+    setReviewSubmitting(true);
+    try {
+      await reviewProfileRequest(selectedReview.userId._id, status, note.trim() || undefined);
+      setReviewModalOpen(false);
+      setSelectedReview(null);
+      await load('refresh');
+      showToast('success', 'Profile Updated', `Profile ${status.replace('_', ' ')}.`);
+    } catch (err: any) {
+      showToast('error', 'Could Not Save Review', err?.message || 'Please try again.');
+    } finally {
+      setReviewSubmitting(false);
     }
   };
 
@@ -380,6 +435,9 @@ export const AdminConsoleScreen: React.FC = () => {
               onVerify={handleVerify}
             />
           )}
+          {section === 'profiles' && (
+            <AdminProfileReviews reviews={profileReviews} onOpen={openReview} />
+          )}
           <View style={{ height: 40 }} />
         </ScrollView>
       )}
@@ -405,10 +463,23 @@ export const AdminConsoleScreen: React.FC = () => {
         onDelete={confirmDeleteRole}
       />
 
+      <AdminProfileReviewModal
+        visible={reviewModalOpen}
+        review={selectedReview}
+        submitting={reviewSubmitting}
+        onClose={() => setReviewModalOpen(false)}
+        onDecision={handleDecision}
+      />
+
       <AdminDrawerModal
         visible={drawerOpen}
         activeSection={section}
-        counts={{ members: members.length, roles: roles.length, pending: pendingCount }}
+        counts={{
+          members: members.length,
+          roles: roles.length,
+          profiles: pendingReviewCount,
+          pending: pendingCount,
+        }}
         onSelect={setSection}
         onClose={() => setDrawerOpen(false)}
       />

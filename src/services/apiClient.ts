@@ -35,7 +35,7 @@ interface ApiEnvelope<T> {
 }
 
 interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Attach the stored Bearer token (defaults to true). */
   auth?: boolean;
@@ -101,3 +101,53 @@ export async function apiRequest<T = unknown>(
 
   return payload.data as T;
 }
+
+/**
+ * multipart/form-data upload over XHR so we can stream upload progress.
+ * `onProgress` receives 0–100.
+ */
+export function uploadWithProgress<T = unknown>(
+  path: string,
+  formData: FormData,
+  onProgress?: (percent: number) => void
+): Promise<T> {
+  return new Promise(async (resolve, reject) => {
+    const token = await tokenStorage.get();
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${API_BASE_URL}${path}`);
+    xhr.setRequestHeader('Accept', 'application/json');
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.timeout = 60000;
+
+    if (xhr.upload && onProgress) {
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+    }
+
+    xhr.onload = () => {
+      let payload: ApiEnvelope<T> | null = null;
+      try {
+        payload = JSON.parse(xhr.responseText) as ApiEnvelope<T>;
+      } catch {
+        /* ignore */
+      }
+      if (xhr.status >= 200 && xhr.status < 300 && payload && payload.success !== false) {
+        resolve(payload.data as T);
+      } else {
+        reject(
+          new ApiError(
+            payload?.message || `Upload failed (${xhr.status}).`,
+            xhr.status,
+            payload?.code
+          )
+        );
+      }
+    };
+    xhr.onerror = () => reject(new ApiError('Could not reach the server for the upload.', 0));
+    xhr.ontimeout = () => reject(new ApiError('The upload timed out. Please try again.', 0));
+
+    xhr.send(formData);
+  });
+}
+

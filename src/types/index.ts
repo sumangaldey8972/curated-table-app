@@ -1,3 +1,59 @@
+export type ProfileStatus =
+  | 'draft'
+  | 'submitted'
+  | 'under_review'
+  | 'approved'
+  | 'rejected';
+
+export interface RequirementDoc {
+  title: string;
+  publicLink: string;
+}
+
+export interface ProfileDetails {
+  _id?: string;
+  userId?: string;
+  designation: string;
+  companyName: string;
+  industry: string[];
+  location: string[];
+  gstNumber: string;
+  isGstVerified: boolean;
+  turnover: string;
+  yearJoined: number | null;
+  avatar: string;
+  avatarUpdatedAt?: string | null;
+  coverImage: string;
+  coverImageUpdatedAt?: string | null;
+  bio: string;
+  requirementDocs: RequirementDoc[];
+  website: string;
+  officeAddress: string;
+  status: ProfileStatus;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewNote?: string;
+}
+
+export interface ProfileCompletion {
+  percent: number;
+  filled: number;
+  total: number;
+  /** Every completion field not yet filled (includes photo & cover). */
+  missing: string[];
+  /** Only the fields that block submission. */
+  missingRequired: string[];
+  /** True when all required (non-photo) fields are filled. */
+  canSubmit: boolean;
+}
+
+export interface ProfileMeResponse {
+  profile: ProfileDetails | null;
+  completion: ProfileCompletion;
+  status: ProfileStatus;
+  gate: 'ok' | 'blocked';
+}
+
 export interface User {
   id: string;
   name: string;

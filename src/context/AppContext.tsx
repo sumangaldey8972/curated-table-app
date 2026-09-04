@@ -31,6 +31,8 @@ import {
   MOCK_NOTIFICATIONS,
 } from '../data/mockData';
 import { loginRequest, getMeRequest, adaptBackendUser } from '../services/authApi';
+import { getMyProfileRequest } from '../services/profileApi';
+import { ProfileStatus, ProfileCompletion } from '../types';
 import { tokenStorage } from '../utils/tokenStorage';
 
 interface AppContextType {
@@ -54,6 +56,15 @@ interface AppContextType {
   isBootstrappingAuth: boolean;
   /** True when the signed-in user carries the backend 'admin' role. */
   isAdmin: boolean;
+
+  // Profile-details gate
+  profileStatus: ProfileStatus | null;
+  profileCompletion: ProfileCompletion | null;
+  /** True while the profile status is being (re)fetched. */
+  isLoadingProfile: boolean;
+  /** Members are gated out of the app until their profile is approved (admins bypass). */
+  isProfileApproved: boolean;
+  refreshProfileStatus: () => Promise<void>;
 
   // Modal State
   activeStory: Story | null;
@@ -141,7 +152,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isBootstrappingAuth, setIsBootstrappingAuth] = useState<boolean>(true);
 
+  const [profileStatus, setProfileStatus] = useState<ProfileStatus | null>(null);
+  const [profileCompletion, setProfileCompletion] = useState<ProfileCompletion | null>(null);
+  const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(false);
+
   const isAdmin = (currentUser.roles ?? []).includes('admin');
+  const isProfileApproved = isAdmin || profileStatus === 'approved';
 
   // Modals state
   const [activeStory, setActiveStory] = useState<Story | null>(null);
@@ -162,6 +178,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [showDrawer, setShowDrawer] = useState(false);
   const [activeSearchQuery, setActiveSearchQuery] = useState('');
 
+  /** Fetch the profile-details gate state for the signed-in member. */
+  const refreshProfileStatus = async () => {
+    setIsLoadingProfile(true);
+    try {
+      const res = await getMyProfileRequest();
+      setProfileStatus(res.status);
+      setProfileCompletion(res.completion);
+    } catch {
+      // Unreachable / unauthenticated — treat as no profile yet.
+      setProfileStatus(null);
+      setProfileCompletion(null);
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  };
+
   // Restore a persisted backend session on launch.
   useEffect(() => {
     let cancelled = false;
@@ -177,6 +209,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const backendUser = await getMeRequest();
         if (cancelled) return;
         setCurrentUser(adaptBackendUser(backendUser));
+        await refreshProfileStatus();
+        if (cancelled) return;
         setIsAuthenticated(true);
       } catch {
         // Token invalid / expired / server unreachable — drop it and show login.
@@ -203,11 +237,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const { token, user } = await loginRequest(identifier, password);
     await tokenStorage.set(token);
     setCurrentUser(adaptBackendUser(user));
+    await refreshProfileStatus();
     setIsAuthenticated(true);
   };
 
   const logout = () => {
     setIsAuthenticated(false);
+    setProfileStatus(null);
+    setProfileCompletion(null);
     void tokenStorage.clear();
   };
 
@@ -646,6 +683,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isAuthenticated,
         isBootstrappingAuth,
         isAdmin,
+        profileStatus,
+        profileCompletion,
+        isLoadingProfile,
+        isProfileApproved,
+        refreshProfileStatus,
 
         activeStory,
         showStoryViewer,

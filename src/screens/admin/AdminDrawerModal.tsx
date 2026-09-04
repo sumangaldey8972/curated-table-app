@@ -15,6 +15,7 @@ import {
   Shield,
   TriangleAlert,
   ChevronRight,
+  IdCard,
 } from 'lucide-react-native';
 import { colors } from '../../theme/colors';
 
@@ -22,7 +23,7 @@ type IconComponent = React.ComponentType<{ color?: string; size?: number }>;
 
 const { width } = Dimensions.get('window');
 
-export type AdminSection = 'overview' | 'members' | 'roles' | 'pending';
+export type AdminSection = 'overview' | 'members' | 'roles' | 'pending' | 'profiles';
 
 interface AdminModuleMeta {
   key: AdminSection;
@@ -57,6 +58,14 @@ export const ADMIN_SECTIONS: AdminModuleMeta[] = [
     icon: Shield,
     color: colors.purpleAccent,
     bg: colors.purpleLight,
+  },
+  {
+    key: 'profiles',
+    label: 'Profile Reviews',
+    sublabel: 'Approve, reject or review submitted profiles',
+    icon: IdCard,
+    color: colors.emerald,
+    bg: colors.emeraldLight,
   },
   {
     key: 'pending',

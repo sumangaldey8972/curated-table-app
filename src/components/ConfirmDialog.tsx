@@ -3,6 +3,7 @@ import {
   View,
   Text,
   StyleSheet,
+  Modal,
   TouchableOpacity,
   ActivityIndicator,
   Pressable,
@@ -25,8 +26,8 @@ interface ConfirmDialogProps {
  * Cross-platform confirmation dialog.
  *
  * `Alert.alert` is a no-op on react-native-web, so anything that must work in
- * the browser (and reliably on top of a Modal on native) uses this instead.
- * Rendered as an absolutely-positioned overlay, so mount it last in its screen.
+ * the browser uses this instead. Rendered in a `Modal`, so it can be mounted
+ * anywhere in the tree.
  */
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   visible,
@@ -39,9 +40,8 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   onCancel,
 }) => {
-  if (!visible) return null;
-
   return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
     <View style={styles.overlay}>
       <Pressable
         style={styles.backdrop}
@@ -81,6 +81,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         </View>
       </View>
     </View>
+    </Modal>
   );
 };
 
