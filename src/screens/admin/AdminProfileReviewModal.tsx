@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { X, Check, Clock, Ban, FileText, ExternalLink } from 'lucide-react-native';
 import { colors } from '../../theme/colors';
-import { AdminProfileReview } from '../../services/profileApi';
+import { AdminProfileReview, formatTurnover } from '../../services/profileApi';
 import { InitialsAvatar } from '../../components/InitialsAvatar';
 
 interface Props {
@@ -84,7 +84,7 @@ export const AdminProfileReviewModal: React.FC<Props> = ({
             <Row label="Designation" value={review.designation} />
             <Row label="Company" value={review.companyName} />
             <Row label="Industry" value={(review.industry ?? []).join(', ')} />
-            <Row label="Location" value={(review.location ?? []).join(', ')} />
+            <Row label="Location" value={[review.city, review.state].filter(Boolean).join(', ')} />
             <Row
               label="GST"
               value={
@@ -93,7 +93,7 @@ export const AdminProfileReviewModal: React.FC<Props> = ({
                   : undefined
               }
             />
-            <Row label="Turnover" value={review.turnover} />
+            <Row label="Turnover" value={formatTurnover(review.turnover, review.turnoverUnit)} />
             <Row label="Year joined" value={review.yearJoined ?? undefined} />
             <Row label="Website" value={review.website} />
             <Row label="Office address" value={review.officeAddress} />

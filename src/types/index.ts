@@ -16,10 +16,12 @@ export interface ProfileDetails {
   designation: string;
   companyName: string;
   industry: string[];
-  location: string[];
+  state: string;
+  city: string;
   gstNumber: string;
   isGstVerified: boolean;
-  turnover: string;
+  turnover: number | null;
+  turnoverUnit?: 'k' | 'l' | 'cr';
   yearJoined: number | null;
   avatar: string;
   avatarUpdatedAt?: string | null;

@@ -27,7 +27,15 @@ import { useApp } from '../context/AppContext';
 import { BrandLogo } from '../components/BrandLogo';
 import { PremiumToast, ToastType } from '../components/PremiumToast';
 import { PhotoField } from '../components/PhotoField';
+import { ChipAutocompleteField } from '../components/ChipAutocompleteField';
+import { SearchSelectField } from '../components/SearchSelectField';
 import { getInitials } from '../utils/initials';
+import { searchIndustriesRequest, createIndustryRequest } from '../services/industryApi';
+import {
+  searchStatesRequest,
+  searchCitiesRequest,
+  createCityRequest,
+} from '../services/locationApi';
 import {
   ProfileFormState,
   emptyProfileForm,
@@ -39,6 +47,7 @@ import {
   uploadFileRequest,
   FIELD_LABELS,
   PickedFile,
+  TURNOVER_UNITS,
 } from '../services/profileApi';
 import { ProfileDetails } from '../types';
 
@@ -54,8 +63,7 @@ export const ProfileSetupScreen: React.FC = () => {
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [avatarTs, setAvatarTs] = useState<string | null>(null);
   const [coverTs, setCoverTs] = useState<string | null>(null);
-  const [industryDraft, setIndustryDraft] = useState('');
-  const [locationDraft, setLocationDraft] = useState('');
+  const [stateId, setStateId] = useState<string | null>(null);
   const [docTitleDraft, setDocTitleDraft] = useState('');
 
   const [toast, setToast] = useState<{
@@ -79,6 +87,18 @@ export const ProfileSetupScreen: React.FC = () => {
       setForm(profileToForm(res.profile));
       setAvatarTs(res.profile?.avatarUpdatedAt ?? null);
       setCoverTs(res.profile?.coverImageUpdatedAt ?? null);
+
+      // Resolve the saved state's id so the City field can search within it.
+      const savedState = res.profile?.state?.trim();
+      if (savedState) {
+        try {
+          const matches = await searchStatesRequest(savedState);
+          const exact = matches.find(s => s.name.toLowerCase() === savedState.toLowerCase());
+          setStateId(exact?.id ?? null);
+        } catch {
+          setStateId(null);
+        }
+      }
     } catch (err: any) {
       showToast('error', 'Could Not Load Profile', err?.message || 'Please try again.');
     } finally {
@@ -92,16 +112,6 @@ export const ProfileSetupScreen: React.FC = () => {
 
   const set = <K extends keyof ProfileFormState>(key: K, value: ProfileFormState[K]) =>
     setForm(prev => ({ ...prev, [key]: value }));
-
-  const addTag = (key: 'industry' | 'location', raw: string) => {
-    const value = raw.trim();
-    if (!value) return;
-    setForm(prev =>
-      prev[key].includes(value) ? prev : { ...prev, [key]: [...prev[key], value] }
-    );
-  };
-  const removeTag = (key: 'industry' | 'location', value: string) =>
-    setForm(prev => ({ ...prev, [key]: prev[key].filter(v => v !== value) }));
 
   const pickDocument = async () => {
     if (!docTitleDraft.trim()) {
@@ -341,13 +351,36 @@ export const ProfileSetupScreen: React.FC = () => {
                   />
                 </Field>
                 <Field label="Annual turnover">
-                  <TextInput
-                    style={styles.input}
-                    value={form.turnover}
-                    onChangeText={t => set('turnover', t)}
-                    placeholder="₹35 Cr - ₹50 Cr"
-                    placeholderTextColor={colors.textMuted}
-                  />
+                  <View style={styles.turnoverRow}>
+                    <TextInput
+                      style={[styles.input, styles.flex]}
+                      value={form.turnover}
+                      onChangeText={t => set('turnover', t.replace(/[^\d.]/g, ''))}
+                      placeholder="Amount"
+                      placeholderTextColor={colors.textMuted}
+                      keyboardType="decimal-pad"
+                    />
+                    <View style={styles.unitGroup}>
+                      {TURNOVER_UNITS.map(u => {
+                        const active = form.turnoverUnit === u.value;
+                        return (
+                          <TouchableOpacity
+                            key={u.value}
+                            style={[styles.unitBtn, active && styles.unitBtnActive]}
+                            onPress={() => set('turnoverUnit', u.value)}
+                            activeOpacity={0.8}
+                          >
+                            <Text style={[styles.unitText, active && styles.unitTextActive]}>
+                              {u.short}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </View>
+                  <Text style={styles.hint}>
+                    e.g. 35 Cr · K = thousand, L = lakh, Cr = crore
+                  </Text>
                 </Field>
                 {profile?.yearJoined != null && (
                   <Text style={styles.memberSince}>
@@ -372,23 +405,41 @@ export const ProfileSetupScreen: React.FC = () => {
               {/* Industry & Location */}
               <Text style={styles.sectionTitle}>INDUSTRY &amp; LOCATION</Text>
               <View style={styles.card}>
-                <ChipField
+                <ChipAutocompleteField
                   label="Industry"
                   values={form.industry}
-                  draft={industryDraft}
-                  setDraft={setIndustryDraft}
-                  onAdd={v => addTag('industry', v)}
-                  onRemove={v => removeTag('industry', v)}
-                  placeholder="Add an industry"
+                  onChange={v => set('industry', v)}
+                  placeholder="Search or add an industry"
+                  search={q => searchIndustriesRequest(q).catch(() => [])}
+                  createEntry={createIndustryRequest}
+                  hint="Pick from the list, or type your own — it's added for others too."
                 />
-                <ChipField
-                  label="Location"
-                  values={form.location}
-                  draft={locationDraft}
-                  setDraft={setLocationDraft}
-                  onAdd={v => addTag('location', v)}
-                  onRemove={v => removeTag('location', v)}
-                  placeholder="City, State"
+                <SearchSelectField
+                  label="State / UT"
+                  value={form.state}
+                  placeholder="Select your state"
+                  search={q => searchStatesRequest(q).catch(() => [])}
+                  onSelect={opt => {
+                    setForm(prev => ({
+                      ...prev,
+                      state: opt?.name ?? '',
+                      city: opt?.name === form.state ? prev.city : '',
+                    }));
+                    setStateId(opt?.id ?? null);
+                  }}
+                />
+                <SearchSelectField
+                  label="City"
+                  value={form.city}
+                  placeholder={stateId ? 'Search your city' : 'Select a state first'}
+                  disabled={!stateId}
+                  disabledHint="Choose a state / UT above to pick a city."
+                  search={q => (stateId ? searchCitiesRequest(stateId, q) : Promise.resolve([])).catch(() => [])}
+                  createEntry={
+                    stateId ? name => createCityRequest(stateId, name) : undefined
+                  }
+                  onSelect={opt => set('city', opt?.name ?? '')}
+                  hint="Not listed? Type it and choose “Add”."
                 />
               </View>
 
@@ -410,7 +461,7 @@ export const ProfileSetupScreen: React.FC = () => {
               {/* Contact */}
               <Text style={styles.sectionTitle}>CONTACT</Text>
               <View style={styles.card}>
-                <Field label="Website">
+                <Field label="Website (optional)">
                   <TextInput
                     style={styles.input}
                     value={form.website}
@@ -530,57 +581,6 @@ const Field: React.FC<{ label: string; style?: any; children: React.ReactNode }>
   </View>
 );
 
-const ChipField: React.FC<{
-  label: string;
-  values: string[];
-  draft: string;
-  setDraft: (v: string) => void;
-  onAdd: (v: string) => void;
-  onRemove: (v: string) => void;
-  placeholder: string;
-}> = ({ label, values, draft, setDraft, onAdd, onRemove, placeholder }) => (
-  <View style={styles.field}>
-    <Text style={styles.fieldLabel}>{label}</Text>
-    <View style={styles.chipInputRow}>
-      <TextInput
-        style={[styles.input, styles.flex]}
-        value={draft}
-        onChangeText={text => {
-          if (text.endsWith(',')) {
-            onAdd(text.slice(0, -1));
-            setDraft('');
-          } else setDraft(text);
-        }}
-        onSubmitEditing={() => {
-          onAdd(draft);
-          setDraft('');
-        }}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textMuted}
-        returnKeyType="done"
-      />
-      <TouchableOpacity
-        style={styles.chipAddBtn}
-        onPress={() => {
-          onAdd(draft);
-          setDraft('');
-        }}
-      >
-        <Plus color={colors.white} size={16} />
-      </TouchableOpacity>
-    </View>
-    {values.length > 0 && (
-      <View style={styles.chipWrap}>
-        {values.map(v => (
-          <TouchableOpacity key={v} style={styles.chip} onPress={() => onRemove(v)}>
-            <Text style={styles.chipText}>{v}</Text>
-            <X color={colors.textSecondary} size={12} />
-          </TouchableOpacity>
-        ))}
-      </View>
-    )}
-  </View>
-);
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
@@ -690,6 +690,23 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
   },
   multiline: { minHeight: 70, textAlignVertical: 'top' },
+  hint: { fontSize: 11, color: colors.textMuted, marginTop: 4 },
+  turnoverRow: { flexDirection: 'row', gap: 8 },
+  unitGroup: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: colors.inputBorder,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  unitBtn: {
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    backgroundColor: colors.inputBg,
+  },
+  unitBtnActive: { backgroundColor: colors.primary },
+  unitText: { fontSize: 12.5, fontWeight: '800', color: colors.textSecondary },
+  unitTextActive: { color: colors.white },
   memberSince: { fontSize: 11.5, color: colors.textMuted, marginTop: -2 },
   gstVerified: { fontSize: 11, color: colors.emerald, fontWeight: '700', marginTop: 4 },
   photoBenefit: { fontSize: 11.5, color: colors.textSecondary, lineHeight: 16 },

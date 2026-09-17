@@ -12,17 +12,18 @@ export const PROFILE_REQUIRED_FIELDS = [
   'designation',
   'companyName',
   'industry',
-  'location',
+  'state',
+  'city',
   'gstNumber',
   'turnover',
   'bio',
-  'website',
   'officeAddress',
 ] as const;
 
-/** Everything that contributes to the completion % (required + encouraged media). */
+/** Everything that contributes to the completion % (required + encouraged extras). */
 export const PROFILE_COMPLETION_FIELDS = [
   ...PROFILE_REQUIRED_FIELDS,
+  'website',
   'avatar',
   'coverImage',
 ] as const;
@@ -31,7 +32,8 @@ export const FIELD_LABELS: Record<string, string> = {
   designation: 'Designation',
   companyName: 'Company name',
   industry: 'Industry',
-  location: 'Location',
+  state: 'State',
+  city: 'City',
   gstNumber: 'GST number',
   turnover: 'Annual turnover',
   avatar: 'Profile photo',
@@ -41,13 +43,32 @@ export const FIELD_LABELS: Record<string, string> = {
   officeAddress: 'Office address',
 };
 
+export type TurnoverUnit = 'k' | 'l' | 'cr';
+
+export const TURNOVER_UNITS: { value: TurnoverUnit; short: string; label: string }[] = [
+  { value: 'k', short: 'K', label: 'Thousand' },
+  { value: 'l', short: 'L', label: 'Lakh' },
+  { value: 'cr', short: 'Cr', label: 'Crore' },
+];
+
+export const formatTurnover = (
+  amount?: number | null,
+  unit?: string | null
+): string => {
+  if (amount == null || !Number.isFinite(amount)) return '';
+  const u = TURNOVER_UNITS.find(x => x.value === (unit || 'cr')) ?? TURNOVER_UNITS[2];
+  return `₹${amount} ${u.short}`;
+};
+
 export interface ProfileFormState {
   designation: string;
   companyName: string;
   industry: string[];
-  location: string[];
+  state: string;
+  city: string;
   gstNumber: string;
-  turnover: string;
+  turnover: string; // kept as text in the form
+  turnoverUnit: TurnoverUnit;
   avatar: string;
   coverImage: string;
   bio: string;
@@ -60,9 +81,11 @@ export const emptyProfileForm = (): ProfileFormState => ({
   designation: '',
   companyName: '',
   industry: [],
-  location: [],
+  state: '',
+  city: '',
   gstNumber: '',
   turnover: '',
+  turnoverUnit: 'cr',
   avatar: '',
   coverImage: '',
   bio: '',
@@ -77,9 +100,11 @@ export const profileToForm = (p: ProfileDetails | null): ProfileFormState => {
     designation: p.designation ?? '',
     companyName: p.companyName ?? '',
     industry: p.industry ?? [],
-    location: p.location ?? [],
+    state: p.state ?? '',
+    city: p.city ?? '',
     gstNumber: p.gstNumber ?? '',
-    turnover: p.turnover ?? '',
+    turnover: p.turnover != null ? String(p.turnover) : '',
+    turnoverUnit: (p.turnoverUnit as TurnoverUnit) ?? 'cr',
     avatar: p.avatar ?? '',
     coverImage: p.coverImage ?? '',
     bio: p.bio ?? '',
@@ -92,6 +117,10 @@ export const profileToForm = (p: ProfileDetails | null): ProfileFormState => {
 const fieldFilled = (form: ProfileFormState, key: string): boolean => {
   const v = (form as unknown as Record<string, unknown>)[key];
   if (Array.isArray(v)) return v.length > 0;
+  if (key === 'turnover') {
+    const n = Number(form.turnover);
+    return Number.isFinite(n) && n > 0;
+  }
   return typeof v === 'string' && v.trim().length > 0;
 };
 
@@ -115,9 +144,11 @@ export const formToPayload = (form: ProfileFormState) => ({
   designation: form.designation.trim(),
   companyName: form.companyName.trim(),
   industry: form.industry,
-  location: form.location,
+  state: form.state.trim(),
+  city: form.city.trim(),
   gstNumber: form.gstNumber.trim(),
-  turnover: form.turnover.trim(),
+  turnover: form.turnover.trim() ? Number(form.turnover.trim()) : null,
+  turnoverUnit: form.turnoverUnit,
   avatar: form.avatar,
   coverImage: form.coverImage,
   bio: form.bio.trim(),
