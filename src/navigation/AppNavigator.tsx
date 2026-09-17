@@ -99,7 +99,11 @@ export const AppNavigator: React.FC = () => {
 
   const handleDrawerNavigate = (screenName: string) => {
     if (navigationRef.isReady()) {
-      navigationRef.navigate(screenName as never);
+      if (screenName === 'Home') {
+        (navigationRef.navigate as any)('MainTabs', { screen: 'Home' });
+      } else {
+        (navigationRef.navigate as any)(screenName);
+      }
     }
   };
 

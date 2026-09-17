@@ -11,6 +11,7 @@ import {
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useNavigation } from '@react-navigation/native';
 import {
   ShieldCheck,
   Building2,
@@ -22,6 +23,8 @@ import {
   CreditCard,
   QrCode,
   Share2,
+  Home,
+  ArrowLeft,
 } from 'lucide-react-native';
 import { colors } from '../theme/colors';
 import { useApp } from '../context/AppContext';
@@ -30,6 +33,7 @@ import { InitialsAvatar } from '../components/InitialsAvatar';
 import { ProfileScreenSkeleton } from '../components/SkeletonLoader';
 
 export const ProfileScreen: React.FC = () => {
+  const navigation = useNavigation<any>();
   const { currentUser, openDigitalBusinessCard, logout, refreshProfileStatus } = useApp();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -57,9 +61,13 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
+  const handleGoHome = () => {
+    navigation.navigate('MainTabs', { screen: 'Home' });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <Header showSearchBar={false} />
+      <Header showSearchBar={false} showHomeButton={true} />
 
       {isLoading ? (
         <ScrollView showsVerticalScrollIndicator={false} style={styles.container}>
@@ -90,6 +98,17 @@ export const ProfileScreen: React.FC = () => {
             </View>
           )}
           <View style={styles.coverOverlay} />
+
+          {/* Floating Return to Home Button */}
+          <TouchableOpacity
+            style={styles.floatingHomeBtn}
+            onPress={handleGoHome}
+            activeOpacity={0.8}
+            accessibilityLabel="Go to Homepage"
+          >
+            <ArrowLeft color={colors.white} size={14} />
+            <Text style={styles.floatingHomeBtnText}>Home</Text>
+          </TouchableOpacity>
 
           <View style={styles.profileBadgeTop}>
             <Text style={styles.profileBadgeTopText}>{currentUser.membershipTier.toUpperCase()}</Text>
@@ -242,6 +261,16 @@ export const ProfileScreen: React.FC = () => {
         {/* Action Buttons */}
         <View style={styles.actionsBox}>
           <TouchableOpacity
+            style={styles.homeActionBtn}
+            onPress={handleGoHome}
+            activeOpacity={0.8}
+            accessibilityLabel="Go to Homepage"
+          >
+            <Home color={colors.white} size={16} />
+            <Text style={styles.homeBtnText}>Go to Homepage</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={styles.primaryActionBtn}
             onPress={() => openDigitalBusinessCard()}
             activeOpacity={0.8}
@@ -320,6 +349,40 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: 'rgba(11, 25, 44, 0.45)',
+  },
+  floatingHomeBtn: {
+    position: 'absolute',
+    top: 12,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(11, 25, 44, 0.75)',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    gap: 5,
+    zIndex: 10,
+  },
+  floatingHomeBtnText: {
+    color: colors.white,
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  homeActionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  homeBtnText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: colors.white,
   },
   profileBadgeTop: {
     position: 'absolute',

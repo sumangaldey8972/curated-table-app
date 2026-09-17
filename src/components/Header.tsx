@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Menu, Bell, Search, ShieldCheck, QrCode } from 'lucide-react-native';
+import { Menu, Bell, Search, ShieldCheck, QrCode, Home } from 'lucide-react-native';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../theme/colors';
 import { useApp } from '../context/AppContext';
@@ -10,9 +10,10 @@ interface HeaderProps {
   onSearchPress?: () => void;
   onSearchFocus?: () => void;
   showSearchBar?: boolean; // Kept for interface compatibility
+  showHomeButton?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onSearchPress, onSearchFocus }) => {
+export const Header: React.FC<HeaderProps> = ({ onSearchPress, onSearchFocus, showHomeButton }) => {
   const navigation = useNavigation<any>();
   const { currentUser, openDrawer, openDigitalBusinessCard, openNotifications, notifications } = useApp();
 
@@ -46,6 +47,18 @@ export const Header: React.FC<HeaderProps> = ({ onSearchPress, onSearchFocus }) 
         </View>
 
         <View style={styles.rightActionIcons}>
+          {/* Direct Return to Homepage Icon if enabled */}
+          {showHomeButton && (
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => navigation.navigate('MainTabs', { screen: 'Home' })}
+              activeOpacity={0.7}
+              accessibilityLabel="Go to Homepage"
+            >
+              <Home color={colors.primary} size={19} />
+            </TouchableOpacity>
+          )}
+
           {/* Clickable Search Icon */}
           <TouchableOpacity
             style={styles.iconButton}

@@ -13,6 +13,7 @@ import {
 import {
   X,
   User,
+  Home,
   FileSpreadsheet,
   Settings,
   Share2,
@@ -58,6 +59,18 @@ export const DrawerModal: React.FC<DrawerModalProps> = ({ onNavigate }) => {
     : [];
 
   const menuItems = [
+    {
+      id: 'home',
+      label: 'Home / Dashboard',
+      sublabel: 'Return to feed, quick actions & statistics',
+      icon: Home,
+      color: colors.primary,
+      bgColor: colors.cardBgElevated,
+      action: () => {
+        closeDrawer();
+        onNavigate('Home');
+      },
+    },
     {
       id: 'profile',
       label: 'My Business Profile',
