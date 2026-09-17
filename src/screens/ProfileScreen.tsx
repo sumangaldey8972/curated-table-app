@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
@@ -25,26 +26,35 @@ import {
 import { colors } from '../theme/colors';
 import { useApp } from '../context/AppContext';
 import { Header } from '../components/Header';
+import { InitialsAvatar } from '../components/InitialsAvatar';
 import { ProfileScreenSkeleton } from '../components/SkeletonLoader';
 
 export const ProfileScreen: React.FC = () => {
-  const { currentUser, openDigitalBusinessCard, logout } = useApp();
+  const { currentUser, openDigitalBusinessCard, logout, refreshProfileStatus } = useApp();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
-    // Simulate fetching executive profile & verified KYC credentials
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 850);
-    return () => clearTimeout(timer);
+    let active = true;
+    (async () => {
+      try {
+        await refreshProfileStatus();
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
+    try {
+      await refreshProfileStatus();
+    } finally {
       setIsRefreshing(false);
-    }, 800);
+    }
   };
 
   return (
@@ -70,7 +80,15 @@ export const ProfileScreen: React.FC = () => {
         >
         {/* Cover & Profile Banner */}
         <View style={styles.coverContainer}>
-          <Image source={{ uri: currentUser.coverImage }} style={styles.coverImage} />
+          {currentUser.coverImage ? (
+            <Image source={{ uri: currentUser.coverImage }} style={styles.coverImage} />
+          ) : (
+            <View style={styles.coverPlaceholder}>
+              <Text style={styles.coverPlaceholderText}>
+                {currentUser.companyName || currentUser.name}
+              </Text>
+            </View>
+          )}
           <View style={styles.coverOverlay} />
 
           <View style={styles.profileBadgeTop}>
@@ -81,7 +99,12 @@ export const ProfileScreen: React.FC = () => {
         {/* Profile Card Overlay */}
         <View style={styles.profileInfoCard}>
           <View style={styles.avatarRow}>
-            <Image source={{ uri: currentUser.avatar }} style={styles.avatar} />
+            <InitialsAvatar
+              name={currentUser.name}
+              uri={currentUser.avatar || undefined}
+              size={72}
+              style={styles.avatar}
+            />
             <TouchableOpacity
               style={styles.cardBtn}
               onPress={() => openDigitalBusinessCard()}
@@ -95,13 +118,15 @@ export const ProfileScreen: React.FC = () => {
           <View style={styles.nameSection}>
             <View style={styles.nameVerifiedRow}>
               <Text style={styles.name}>{currentUser.name}</Text>
-              <ShieldCheck color={colors.emerald} size={18} />
+              {currentUser.isGstVerified && <ShieldCheck color={colors.emerald} size={18} />}
             </View>
-            <Text style={styles.designation}>{currentUser.designation}</Text>
-            <View style={styles.companyRow}>
-              <Building2 color={colors.primary} size={14} />
-              <Text style={styles.companyName}>{currentUser.companyName}</Text>
-            </View>
+            <Text style={styles.designation}>{currentUser.designation || 'Member'}</Text>
+            {currentUser.companyName ? (
+              <View style={styles.companyRow}>
+                <Building2 color={colors.primary} size={14} />
+                <Text style={styles.companyName}>{currentUser.companyName}</Text>
+              </View>
+            ) : null}
             <Text style={styles.chapterText}>
               {currentUser.chapter} • Member Since {currentUser.yearJoined}
             </Text>
@@ -132,23 +157,23 @@ export const ProfileScreen: React.FC = () => {
 
           <View style={styles.specsGrid}>
             <View style={styles.specItem}>
-              <Text style={styles.specLabel}>GST NUMBER (VERIFIED)</Text>
-              <Text style={styles.specGst}>{currentUser.gstNumber}</Text>
+              <Text style={styles.specLabel}>GST NUMBER {currentUser.isGstVerified ? '(VERIFIED)' : ''}</Text>
+              <Text style={styles.specGst}>{currentUser.gstNumber || 'Not provided'}</Text>
             </View>
 
             <View style={styles.specItem}>
               <Text style={styles.specLabel}>ANNUAL TURNOVER</Text>
-              <Text style={styles.specValue}>{currentUser.turnover}</Text>
+              <Text style={styles.specValue}>{currentUser.turnover || 'Not disclosed'}</Text>
             </View>
 
             <View style={styles.specItem}>
               <Text style={styles.specLabel}>INDUSTRY</Text>
-              <Text style={styles.specValue}>{currentUser.industry}</Text>
+              <Text style={styles.specValue}>{currentUser.industry || 'General'}</Text>
             </View>
 
             <View style={styles.specItem}>
               <Text style={styles.specLabel}>OFFICE LOCATION</Text>
-              <Text style={styles.specValue}>{currentUser.location}</Text>
+              <Text style={styles.specValue}>{currentUser.location || 'Not provided'}</Text>
             </View>
           </View>
         </View>
@@ -156,30 +181,38 @@ export const ProfileScreen: React.FC = () => {
         {/* Company Bio */}
         <View style={styles.sectionCard}>
           <Text style={styles.sectionHeader}>ABOUT THE COMPANY</Text>
-          <Text style={styles.bioText}>{currentUser.bio}</Text>
+          <Text style={styles.bioText}>{currentUser.bio || 'No company bio provided yet.'}</Text>
         </View>
 
         {/* Verified Capability Documents / Brochures */}
-        {currentUser.requirementDocs && (
+        {currentUser.requirementDocs && currentUser.requirementDocs.length > 0 ? (
           <View style={styles.sectionCard}>
             <Text style={styles.sectionHeader}>COMPANY BROCHURES & DOCUMENTS</Text>
             {currentUser.requirementDocs.map((doc, idx) => (
               <TouchableOpacity
                 key={idx}
                 style={styles.docItem}
-                onPress={() => Alert.alert('View Document', `Opening ${doc.title}`)}
+                onPress={() => {
+                  if (doc.publicLink) {
+                    Linking.openURL(doc.publicLink).catch(() => {
+                      Alert.alert('Error', 'Could not open document link.');
+                    });
+                  } else {
+                    Alert.alert('View Document', `Opening ${doc.title}`);
+                  }
+                }}
                 activeOpacity={0.8}
               >
                 <FileText color={colors.crimson} size={18} />
                 <View style={styles.docInfo}>
                   <Text style={styles.docTitle} numberOfLines={1}>{doc.title}</Text>
-                  <Text style={styles.docMeta}>{doc.type} • {doc.size} • Verified Document</Text>
+                  <Text style={styles.docMeta}>{doc.type || 'Document'} {doc.size ? `• ${doc.size}` : ''} • Verified Document</Text>
                 </View>
                 <Text style={styles.docAction}>View</Text>
               </TouchableOpacity>
             ))}
           </View>
-        )}
+        ) : null}
 
         {/* Official Contact Info */}
         <View style={styles.sectionCard}>
@@ -187,22 +220,22 @@ export const ProfileScreen: React.FC = () => {
 
           <View style={styles.contactItem}>
             <Mail color={colors.primary} size={15} />
-            <Text style={styles.contactText}>{currentUser.contact.email}</Text>
+            <Text style={styles.contactText}>{currentUser.contact?.email || '—'}</Text>
           </View>
 
           <View style={styles.contactItem}>
             <Phone color={colors.primary} size={15} />
-            <Text style={styles.contactText}>{currentUser.contact.phone}</Text>
+            <Text style={styles.contactText}>{currentUser.contact?.phone || '—'}</Text>
           </View>
 
           <View style={styles.contactItem}>
             <Globe color={colors.primary} size={15} />
-            <Text style={styles.contactText}>{currentUser.contact.website}</Text>
+            <Text style={styles.contactText}>{currentUser.contact?.website || '—'}</Text>
           </View>
 
           <View style={styles.contactItem}>
             <MapPin color={colors.primary} size={15} />
-            <Text style={styles.contactText}>{currentUser.contact.officeAddress}</Text>
+            <Text style={styles.contactText}>{currentUser.contact?.officeAddress || '—'}</Text>
           </View>
         </View>
 
@@ -264,6 +297,21 @@ const styles = StyleSheet.create({
   coverImage: {
     width: '100%',
     height: '100%',
+  },
+  coverPlaceholder: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  coverPlaceholderText: {
+    color: colors.white,
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    opacity: 0.85,
   },
   coverOverlay: {
     position: 'absolute',

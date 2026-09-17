@@ -72,7 +72,7 @@ export interface User {
   coverImage?: string;
   membershipTier: 'Founder Council' | 'Executive Member' | 'Enterprise Council' | 'Global Council';
   bio: string;
-  requirementDocs?: { title: string; size: string; type: string }[];
+  requirementDocs?: { title: string; size?: string; type?: string; publicLink?: string }[];
   contact: {
     email: string;
     phone: string;

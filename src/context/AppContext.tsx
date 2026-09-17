@@ -30,8 +30,14 @@ import {
   MOCK_MESSAGES,
   MOCK_NOTIFICATIONS,
 } from '../data/mockData';
-import { loginRequest, getMeRequest, adaptBackendUser } from '../services/authApi';
+import {
+  loginRequest,
+  getMeRequest,
+  adaptBackendUser,
+  adaptBackendUserWithProfile,
+} from '../services/authApi';
 import { getMyProfileRequest } from '../services/profileApi';
+import { listMembers } from '../services/adminApi';
 import { ProfileStatus, ProfileCompletion } from '../types';
 import { tokenStorage } from '../utils/tokenStorage';
 
@@ -65,6 +71,7 @@ interface AppContextType {
   /** Members are gated out of the app until their profile is approved (admins bypass). */
   isProfileApproved: boolean;
   refreshProfileStatus: () => Promise<void>;
+  refreshMembers: () => Promise<void>;
 
   // Modal State
   activeStory: Story | null;
@@ -178,13 +185,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [showDrawer, setShowDrawer] = useState(false);
   const [activeSearchQuery, setActiveSearchQuery] = useState('');
 
-  /** Fetch the profile-details gate state for the signed-in member. */
+  /** Fetch all registered members from the backend and populate the directory. */
+  const refreshMembers = async () => {
+    try {
+      const res = await listMembers();
+      if (res && Array.isArray(res) && res.length > 0) {
+        const adapted = res.map(m => adaptBackendUser(m as any, (m as any).profileDetails));
+        setUsers(adapted);
+      }
+    } catch {
+      // Keep existing users if backend is unreachable
+    }
+  };
+
+  /** Fetch the profile-details gate state and full profile for the signed-in member. */
   const refreshProfileStatus = async () => {
     setIsLoadingProfile(true);
     try {
       const res = await getMyProfileRequest();
       setProfileStatus(res.status);
       setProfileCompletion(res.completion);
+      if (res.profile) {
+        setCurrentUser(prev => adaptBackendUserWithProfile(prev, res.profile!));
+      }
     } catch {
       // Unreachable / unauthenticated — treat as no profile yet.
       setProfileStatus(null);
@@ -208,10 +231,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       try {
         const backendUser = await getMeRequest();
         if (cancelled) return;
-        setCurrentUser(adaptBackendUser(backendUser));
-        await refreshProfileStatus();
+
+        let profileData = null;
+        try {
+          const profileRes = await getMyProfileRequest();
+          if (!cancelled) {
+            setProfileStatus(profileRes.status);
+            setProfileCompletion(profileRes.completion);
+            profileData = profileRes.profile;
+          }
+        } catch {
+          if (!cancelled) {
+            setProfileStatus(null);
+            setProfileCompletion(null);
+          }
+        }
+
         if (cancelled) return;
+        setCurrentUser(adaptBackendUser(backendUser, profileData));
         setIsAuthenticated(true);
+        void refreshMembers();
       } catch {
         // Token invalid / expired / server unreachable — drop it and show login.
         await tokenStorage.clear();
@@ -236,9 +275,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const loginWithCredentials = async (identifier: string, password: string) => {
     const { token, user } = await loginRequest(identifier, password);
     await tokenStorage.set(token);
-    setCurrentUser(adaptBackendUser(user));
-    await refreshProfileStatus();
+
+    let profileData = null;
+    try {
+      const profileRes = await getMyProfileRequest();
+      setProfileStatus(profileRes.status);
+      setProfileCompletion(profileRes.completion);
+      profileData = profileRes.profile;
+    } catch {
+      setProfileStatus(null);
+      setProfileCompletion(null);
+    }
+
+    setCurrentUser(adaptBackendUser(user, profileData));
     setIsAuthenticated(true);
+    void refreshMembers();
   };
 
   const logout = () => {
@@ -688,6 +739,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isLoadingProfile,
         isProfileApproved,
         refreshProfileStatus,
+        refreshMembers,
 
         activeStory,
         showStoryViewer,

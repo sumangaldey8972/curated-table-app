@@ -27,6 +27,7 @@ import {
 import { colors } from '../theme/colors';
 import { useApp } from '../context/AppContext';
 import { BrandLogo } from './BrandLogo';
+import { InitialsAvatar } from './InitialsAvatar';
 
 const { width } = Dimensions.get('window');
 
@@ -179,18 +180,25 @@ export const DrawerModal: React.FC<DrawerModalProps> = ({ onNavigate }) => {
                 onNavigate('Profile');
               }}
             >
-              <Image source={{ uri: currentUser.avatar }} style={styles.avatar} />
+              <InitialsAvatar
+                name={currentUser.name}
+                uri={currentUser.avatar || undefined}
+                size={56}
+                style={styles.avatar}
+              />
               <View style={styles.userInfo}>
                 <View style={styles.nameRow}>
                   <Text style={styles.userName}>{currentUser.name}</Text>
-                  <ShieldCheck color={colors.emerald} size={14} />
+                  {currentUser.isGstVerified && <ShieldCheck color={colors.emerald} size={14} />}
                 </View>
                 <Text style={styles.userDesignation} numberOfLines={1}>
-                  {currentUser.designation}
+                  {currentUser.designation || 'Member'}
                 </Text>
-                <Text style={styles.userCompany} numberOfLines={1}>
-                  {currentUser.companyName}
-                </Text>
+                {currentUser.companyName ? (
+                  <Text style={styles.userCompany} numberOfLines={1}>
+                    {currentUser.companyName}
+                  </Text>
+                ) : null}
                 <View style={styles.tierPill}>
                   <Text style={styles.tierPillText}>{currentUser.membershipTier}</Text>
                 </View>

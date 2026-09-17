@@ -9,6 +9,7 @@ import {
   ScrollView,
   Alert,
   Dimensions,
+  Linking,
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import {
@@ -30,6 +31,7 @@ import {
 } from 'lucide-react-native';
 import { colors } from '../theme/colors';
 import { useApp } from '../context/AppContext';
+import { InitialsAvatar } from './InitialsAvatar';
 
 const { width } = Dimensions.get('window');
 
@@ -52,7 +54,7 @@ export const DigitalBusinessCardModal: React.FC = () => {
   if (!showBusinessCardModal) return null;
 
   // vCard text payload for QR Code
-  const vCardPayload = `BEGIN:VCARD\nVERSION:3.0\nN:${user.name}\nFN:${user.name}\nORG:${user.companyName}\nTITLE:${user.designation}\nTEL:${user.contact.phone}\nEMAIL:${user.contact.email}\nURL:${user.contact.website}\nADR:;;${user.contact.officeAddress}\nNOTE:Curated Table Member (${user.membershipTier})\nEND:VCARD`;
+  const vCardPayload = `BEGIN:VCARD\nVERSION:3.0\nN:${user.name}\nFN:${user.name}\nORG:${user.companyName || ''}\nTITLE:${user.designation || ''}\nTEL:${user.contact?.phone || ''}\nEMAIL:${user.contact?.email || ''}\nURL:${user.contact?.website || ''}\nADR:;;${user.contact?.officeAddress || ''}\nNOTE:Curated Table Member (${user.membershipTier || 'Member'})\nEND:VCARD`;
 
   const handleCopyVCard = () => {
     Alert.alert(
@@ -153,14 +155,21 @@ export const DigitalBusinessCardModal: React.FC = () => {
                 {/* Member Details */}
                 <View style={styles.cardMainContent}>
                   <View style={styles.memberPhotoRow}>
-                    <Image source={{ uri: user.avatar }} style={styles.cardAvatar} />
+                    <InitialsAvatar
+                      name={user.name}
+                      uri={user.avatar || undefined}
+                      size={54}
+                      style={styles.cardAvatar}
+                    />
                     <View style={styles.memberInfoCol}>
                       <View style={styles.verifiedRow}>
                         <Text style={styles.cardMemberName}>{user.name}</Text>
-                        <ShieldCheck color={colors.emerald} size={16} />
+                        {user.isGstVerified && <ShieldCheck color={colors.emerald} size={16} />}
                       </View>
-                      <Text style={styles.cardDesignation}>{user.designation}</Text>
-                      <Text style={styles.cardCompany}>{user.companyName}</Text>
+                      <Text style={styles.cardDesignation}>{user.designation || 'Member'}</Text>
+                      {user.companyName ? (
+                        <Text style={styles.cardCompany}>{user.companyName}</Text>
+                      ) : null}
                     </View>
                   </View>
 
@@ -170,17 +179,17 @@ export const DigitalBusinessCardModal: React.FC = () => {
                   <View style={styles.cardMetaGrid}>
                     <View style={styles.metaItem}>
                       <Text style={styles.metaLabel}>INDUSTRY</Text>
-                      <Text style={styles.metaValue} numberOfLines={1}>{user.industry}</Text>
+                      <Text style={styles.metaValue} numberOfLines={1}>{user.industry || 'General'}</Text>
                     </View>
 
                     <View style={styles.metaItem}>
-                      <Text style={styles.metaLabel}>GSTIN (VERIFIED)</Text>
-                      <Text style={styles.metaValueGst}>{user.gstNumber}</Text>
+                      <Text style={styles.metaLabel}>GSTIN {user.isGstVerified ? '(VERIFIED)' : ''}</Text>
+                      <Text style={styles.metaValueGst}>{user.gstNumber || 'Not provided'}</Text>
                     </View>
 
                     <View style={styles.metaItem}>
                       <Text style={styles.metaLabel}>ANNUAL TURNOVER</Text>
-                      <Text style={styles.metaValue}>{user.turnover}</Text>
+                      <Text style={styles.metaValue}>{user.turnover || 'Not disclosed'}</Text>
                     </View>
 
                     <View style={styles.metaItem}>
@@ -192,7 +201,9 @@ export const DigitalBusinessCardModal: React.FC = () => {
 
                 {/* Card Footer */}
                 <View style={styles.cardFooter}>
-                  <Text style={styles.cardFooterContact}>{user.contact.email} • {user.contact.phone}</Text>
+                  <Text style={styles.cardFooterContact}>
+                    {[user.contact?.email, user.contact?.phone].filter(Boolean).join(' • ') || 'Curated Table Verified Member'}
+                  </Text>
                   <Text style={styles.cardFooterSub}>Member Since {user.yearJoined}</Text>
                 </View>
               </View>
@@ -217,29 +228,31 @@ export const DigitalBusinessCardModal: React.FC = () => {
             <View style={styles.detailsCard}>
               <Text style={styles.detailsCardHeader}>BUSINESS CONTACT DETAILS</Text>
 
-              <View style={styles.contactRow}>
-                <Building2 color={colors.primary} size={15} />
-                <Text style={styles.contactText}>{user.companyName}</Text>
-              </View>
+              {user.companyName ? (
+                <View style={styles.contactRow}>
+                  <Building2 color={colors.primary} size={15} />
+                  <Text style={styles.contactText}>{user.companyName}</Text>
+                </View>
+              ) : null}
 
               <View style={styles.contactRow}>
                 <Mail color={colors.textSecondary} size={15} />
-                <Text style={styles.contactText}>{user.contact.email}</Text>
+                <Text style={styles.contactText}>{user.contact?.email || '—'}</Text>
               </View>
 
               <View style={styles.contactRow}>
                 <Phone color={colors.textSecondary} size={15} />
-                <Text style={styles.contactText}>{user.contact.phone}</Text>
+                <Text style={styles.contactText}>{user.contact?.phone || '—'}</Text>
               </View>
 
               <View style={styles.contactRow}>
                 <Globe color={colors.textSecondary} size={15} />
-                <Text style={styles.contactText}>{user.contact.website}</Text>
+                <Text style={styles.contactText}>{user.contact?.website || '—'}</Text>
               </View>
 
               <View style={styles.contactRow}>
                 <MapPin color={colors.textSecondary} size={15} />
-                <Text style={styles.contactText}>{user.contact.officeAddress}</Text>
+                <Text style={styles.contactText}>{user.contact?.officeAddress || '—'}</Text>
               </View>
             </View>
 
@@ -251,13 +264,21 @@ export const DigitalBusinessCardModal: React.FC = () => {
                   <TouchableOpacity
                     key={idx}
                     style={styles.docItemRow}
-                    onPress={() => Alert.alert('Download Document', `Downloading ${doc.title}`)}
+                    onPress={() => {
+                      if (doc.publicLink) {
+                        Linking.openURL(doc.publicLink).catch(() => {
+                          Alert.alert('Error', 'Could not open document link.');
+                        });
+                      } else {
+                        Alert.alert('View Document', `Opening ${doc.title}`);
+                      }
+                    }}
                     activeOpacity={0.7}
                   >
                     <FileText color={colors.crimson} size={18} />
                     <View style={styles.docItemInfo}>
                       <Text style={styles.docItemTitle} numberOfLines={1}>{doc.title}</Text>
-                      <Text style={styles.docItemMeta}>{doc.type} • {doc.size}</Text>
+                      <Text style={styles.docItemMeta}>{doc.type || 'Document'} {doc.size ? `• ${doc.size}` : ''}</Text>
                     </View>
                     <Download color={colors.accentBlue} size={16} />
                   </TouchableOpacity>

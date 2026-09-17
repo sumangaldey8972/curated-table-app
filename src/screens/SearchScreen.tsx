@@ -22,6 +22,7 @@ import {
 } from 'lucide-react-native';
 import { colors } from '../theme/colors';
 import { useApp } from '../context/AppContext';
+import { InitialsAvatar } from '../components/InitialsAvatar';
 import { SearchScreenSkeleton } from '../components/SkeletonLoader';
 
 export const SearchScreen: React.FC = () => {
@@ -33,6 +34,7 @@ export const SearchScreen: React.FC = () => {
     openLogOneToOne,
     openRequestAdminAccess,
     requestedAdminAccessIds,
+    refreshMembers,
   } = useApp();
 
   const [isLoading, setIsLoading] = useState(true);
@@ -40,18 +42,26 @@ export const SearchScreen: React.FC = () => {
   const [selectedIndustry, setSelectedIndustry] = useState<string>('All');
 
   useEffect(() => {
-    // Simulate backend network search indexing
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 900);
-    return () => clearTimeout(timer);
+    let active = true;
+    (async () => {
+      try {
+        await refreshMembers();
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
   }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
+    try {
+      await refreshMembers();
+    } finally {
       setIsRefreshing(false);
-    }, 800);
+    }
   };
 
   const industries = [
@@ -172,20 +182,29 @@ export const SearchScreen: React.FC = () => {
                   {/* Top Profile Info */}
                   <View style={styles.cardHeader}>
                     <TouchableOpacity onPress={() => openDigitalBusinessCard(member)} activeOpacity={0.8}>
-                      <Image source={{ uri: member.avatar }} style={styles.avatar} />
+                      <InitialsAvatar
+                        name={member.name}
+                        uri={member.avatar || undefined}
+                        size={52}
+                        style={styles.avatar}
+                      />
                     </TouchableOpacity>
 
                     <View style={styles.headerInfo}>
                       <View style={styles.nameRow}>
                         <Text style={styles.memberName}>{member.name}</Text>
-                        <ShieldCheck color={colors.emerald} size={15} />
+                        {member.isGstVerified && <ShieldCheck color={colors.emerald} size={15} />}
                       </View>
-                      <Text style={styles.designation}>{member.designation}</Text>
-                      <View style={styles.companyRow}>
-                        <Building2 color={colors.primary} size={12} />
-                        <Text style={styles.companyName} numberOfLines={1}>{member.companyName}</Text>
-                      </View>
-                      <Text style={styles.chapterText}>{member.chapter} • Member since {member.yearJoined}</Text>
+                      <Text style={styles.designation}>{member.designation || 'Member'}</Text>
+                      {member.companyName ? (
+                        <View style={styles.companyRow}>
+                          <Building2 color={colors.primary} size={12} />
+                          <Text style={styles.companyName} numberOfLines={1}>{member.companyName}</Text>
+                        </View>
+                      ) : null}
+                      <Text style={styles.chapterText}>
+                        {member.chapter} • Member since {member.yearJoined}
+                      </Text>
                     </View>
                   </View>
 
@@ -193,17 +212,17 @@ export const SearchScreen: React.FC = () => {
                   <View style={styles.specGrid}>
                     <View style={styles.specItem}>
                       <Text style={styles.specLabel}>GST NUMBER</Text>
-                      <Text style={styles.specGst}>{member.gstNumber}</Text>
+                      <Text style={styles.specGst}>{member.gstNumber || 'Not provided'}</Text>
                     </View>
 
                     <View style={styles.specItem}>
                       <Text style={styles.specLabel}>ANNUAL TURNOVER</Text>
-                      <Text style={styles.specValue}>{member.turnover}</Text>
+                      <Text style={styles.specValue}>{member.turnover || 'Not disclosed'}</Text>
                     </View>
 
                     <View style={styles.specItem}>
                       <Text style={styles.specLabel}>LOCATION</Text>
-                      <Text style={styles.specValue}>{member.location}</Text>
+                      <Text style={styles.specValue}>{member.location || '—'}</Text>
                     </View>
 
                     <View style={styles.specItem}>
@@ -213,7 +232,9 @@ export const SearchScreen: React.FC = () => {
                   </View>
 
                   {/* Bio snippet */}
-                  <Text style={styles.bioSnippet} numberOfLines={2}>{member.bio}</Text>
+                  <Text style={styles.bioSnippet} numberOfLines={2}>
+                    {member.bio || 'Curated Table Member'}
+                  </Text>
 
                   {/* Action Buttons Row */}
                   <View style={styles.cardActions}>

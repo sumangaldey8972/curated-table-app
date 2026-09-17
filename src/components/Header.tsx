@@ -83,16 +83,23 @@ export const Header: React.FC<HeaderProps> = ({ onSearchPress, onSearchFocus }) 
       <View style={styles.memberGreetingRow}>
         <View>
           <Text style={styles.greetingText}>
-            Namaskar, <Text style={styles.memberName}>{currentUser.name.split(' ')[0]}</Text>
+            Namaskar, <Text style={styles.memberName}>{(currentUser.name || 'Member').split(' ')[0]}</Text>
           </Text>
           <Text style={styles.chapterBadgeText}>
-            {currentUser.chapter} • <Text style={styles.tierText}>{currentUser.membershipTier}</Text>
+            {currentUser.chapter || 'Kolkata Chapter'} • <Text style={styles.tierText}>{currentUser.membershipTier || 'Member'}</Text>
           </Text>
         </View>
-        <View style={styles.gstVerifiedPill}>
-          <ShieldCheck color={colors.emerald} size={14} />
-          <Text style={styles.gstVerifiedText}>GST Verified</Text>
-        </View>
+        {currentUser.isGstVerified ? (
+          <View style={styles.gstVerifiedPill}>
+            <ShieldCheck color={colors.emerald} size={14} />
+            <Text style={styles.gstVerifiedText}>GST Verified</Text>
+          </View>
+        ) : (
+          <View style={[styles.gstVerifiedPill, { backgroundColor: colors.accentBlueLight, borderColor: colors.accentBlueBorder }]}>
+            <ShieldCheck color={colors.accentBlue} size={14} />
+            <Text style={[styles.gstVerifiedText, { color: colors.accentBlue }]}>Member</Text>
+          </View>
+        )}
       </View>
     </View>
   );
