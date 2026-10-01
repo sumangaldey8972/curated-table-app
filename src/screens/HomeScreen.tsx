@@ -24,24 +24,26 @@ interface HomeScreenProps {
 }
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
-  const { posts } = useApp();
+  const { posts, refreshPosts } = useApp();
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState<'All' | 'B2B Requirement' | 'Deal Won' | 'Partnership Ask'>('All');
 
   useEffect(() => {
-    // Simulate backend network fetch with skeleton loader
+    // Simulate initial fetch with skeleton loader
     const timer = setTimeout(() => {
       setIsLoading(false);
     }, 1100);
     return () => clearTimeout(timer);
   }, []);
 
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
     setIsRefreshing(true);
-    setTimeout(() => {
+    try {
+      await refreshPosts();
+    } finally {
       setIsRefreshing(false);
-    }, 900);
+    }
   };
 
   const filterTabs: ('All' | 'B2B Requirement' | 'Deal Won' | 'Partnership Ask')[] = [

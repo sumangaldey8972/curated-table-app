@@ -1,504 +1,583 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Modal,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   TextInput,
   ScrollView,
+  Image,
   Alert,
   ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
-import { X, Send, Sparkles, AlertCircle, FileText, Check, DollarSign, MessageSquare, Handshake, Trophy, Globe } from 'lucide-react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  X,
+  Sparkles,
+  Image as ImageIcon,
+  FileText,
+  Hash,
+  Globe2,
+  Trash2,
+} from 'lucide-react-native';
 import { colors } from '../theme/colors';
-import { Post } from '../types';
 import { useApp } from '../context/AppContext';
+import { InitialsAvatar } from './InitialsAvatar';
 
 export const PostCreationModal: React.FC = () => {
-  const { showCreatePostModal, closeCreatePost, createPost } = useApp();
+  const { showCreatePostModal, closeCreatePost, createPost, editPost, editingPost, currentUser } = useApp();
 
-  const [tag, setTag] = useState<Post['tag']>('B2B Requirement');
   const [content, setContent] = useState('');
-  const [isUrgent, setIsUrgent] = useState(true);
-  const [budgetOrValue, setBudgetOrValue] = useState('₹ 50 Lakhs - ₹ 1 Cr');
-  const [hasAttachment, setHasAttachment] = useState(true);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [attachedDoc, setAttachedDoc] = useState<{
+    name: string;
+    size: string;
+    type: string;
+    url: string;
+  } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const inputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    if (editingPost) {
+      setContent(editingPost.content || '');
+      setSelectedImage(editingPost.mediaUrl || null);
+      setAttachedDoc(
+        editingPost.documentAttachment
+          ? {
+              name: editingPost.documentAttachment.name,
+              size: editingPost.documentAttachment.size,
+              type: editingPost.documentAttachment.type,
+              url: (editingPost.documentAttachment as any).url || '',
+            }
+          : null
+      );
+    } else {
+      setContent('');
+      setSelectedImage(null);
+      setAttachedDoc(null);
+    }
+  }, [editingPost, showCreatePostModal]);
 
   if (!showCreatePostModal) return null;
 
-  const handleSubmit = () => {
-    if (!content.trim()) {
-      Alert.alert('Please Enter Details', 'Please write what you are looking for.');
+  const handleInsertHashtag = (tag: string) => {
+    setContent(prev => (prev ? `${prev} ${tag} ` : `${tag} `));
+    inputRef.current?.focus();
+  };
+
+  const handleToggleSampleImage = () => {
+    if (selectedImage) {
+      setSelectedImage(null);
+    } else {
+      // High-quality business/manufacturing facility sample
+      setSelectedImage(
+        'https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop&q=80'
+      );
+    }
+  };
+
+  const handleToggleSampleDoc = () => {
+    if (attachedDoc) {
+      setAttachedDoc(null);
+    } else {
+      setAttachedDoc({
+        name: 'Technical_RFP_Specification.pdf',
+        size: '2.4 MB',
+        type: 'PDF',
+        url: 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf',
+      });
+    }
+  };
+
+  const handleResetAndClose = () => {
+    setContent('');
+    setSelectedImage(null);
+    setAttachedDoc(null);
+    setIsSubmitting(false);
+    closeCreatePost();
+  };
+
+  const handleSubmit = async () => {
+    const trimmed = content.trim();
+    if (!trimmed && !selectedImage && !attachedDoc) {
+      Alert.alert('Empty Post', 'Please write something or attach media before publishing.');
       return;
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      createPost(content.trim(), tag, isUrgent, budgetOrValue.trim() || undefined);
+    try {
+      if (editingPost) {
+        await editPost(editingPost.id, trimmed, {
+          mediaUrl: selectedImage || undefined,
+          documentAttachment: attachedDoc || undefined,
+        });
+        setIsSubmitting(false);
+        handleResetAndClose();
+        Alert.alert('Post Updated! ✨', 'Your post has been updated.');
+      } else {
+        await createPost(trimmed, {
+          mediaUrl: selectedImage || undefined,
+          documentAttachment: attachedDoc || undefined,
+        });
+        setIsSubmitting(false);
+        handleResetAndClose();
+        Alert.alert('Post Published! 🚀', 'Your post is now live on the council feed.');
+      }
+    } catch {
       setIsSubmitting(false);
-      setContent('');
-      closeCreatePost();
-      Alert.alert('Post Published! 🚀', 'Your post is now live on the feed.');
-    }, 900);
+      Alert.alert('Error', 'Failed to save post. Please try again.');
+    }
   };
 
-  const tagConfigs: { tag: Post['tag']; icon: any; color: string }[] = [
-    { tag: 'B2B Requirement', icon: AlertCircle, color: colors.crimson },
-    { tag: 'Deal Won', icon: Trophy, color: colors.emerald },
-    { tag: 'Partnership Ask', icon: Handshake, color: colors.accentBlue },
-    { tag: 'General', icon: Globe, color: colors.primary },
-  ];
+  const canSubmit = content.trim().length > 0 || !!selectedImage || !!attachedDoc;
 
   return (
     <Modal
       visible={showCreatePostModal}
-      transparent
       animationType="slide"
-      onRequestClose={closeCreatePost}
+      presentationStyle="fullScreen"
+      onRequestClose={handleResetAndClose}
     >
-      <View style={styles.overlay}>
-        {/* Backdrop Dismiss Area */}
-        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={closeCreatePost} />
+      <SafeAreaView style={styles.fullScreenContainer} edges={['top', 'bottom', 'left', 'right']}>
+        {/* Full-Screen Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={handleResetAndClose}
+            activeOpacity={0.7}
+          >
+            <X color={colors.textPrimary} size={20} />
+          </TouchableOpacity>
 
-        <View style={styles.sheetContainer}>
-          {/* Top Drag Handle */}
-          <View style={styles.sheetHandle} />
+          <Text style={styles.headerTitle}>{editingPost ? 'Edit Post' : 'Create Post'}</Text>
 
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerTitleGroup}>
-              <View style={styles.badgePill}>
-                <MessageSquare color={colors.crimson} size={11} />
-                <Text style={styles.headerBadge}>CURATED FEED</Text>
+          <TouchableOpacity
+            style={[styles.publishPillBtn, !canSubmit && styles.publishPillBtnDisabled]}
+            onPress={handleSubmit}
+            disabled={!canSubmit || isSubmitting}
+            activeOpacity={0.8}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color={colors.white} />
+            ) : (
+              <>
+                <Sparkles color={colors.white} size={14} />
+                <Text style={styles.publishPillText}>{editingPost ? 'Save' : 'Post'}</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.keyboardContainer}
+        >
+          <ScrollView
+            style={styles.scrollArea}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollBody}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Author Identity Card */}
+            <View style={styles.authorRow}>
+              {currentUser.avatar ? (
+                <Image source={{ uri: currentUser.avatar }} style={styles.authorAvatar} />
+              ) : (
+                <InitialsAvatar name={currentUser.name} size={48} />
+              )}
+              <View style={styles.authorInfo}>
+                <Text style={styles.authorName}>{currentUser.name}</Text>
+                <Text style={styles.authorMeta} numberOfLines={1}>
+                  {currentUser.companyName
+                    ? `${currentUser.companyName} • ${currentUser.chapter || 'Council Member'}`
+                    : currentUser.chapter || 'Kolkata Central Chapter'}
+                </Text>
+
+                <View style={styles.audienceBadge}>
+                  <Globe2 color={colors.primary} size={11} />
+                  <Text style={styles.audienceText}>Council Network Feed</Text>
+                </View>
               </View>
-              <Text style={styles.headerTitle}>Create a Post or Request</Text>
-            </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={closeCreatePost} activeOpacity={0.7}>
-              <X color={colors.textPrimary} size={18} />
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
-            {/* Category / Tag Selector */}
-            <Text style={styles.inputLabel}>SELECT POST CATEGORY</Text>
-            <View style={styles.tagsRow}>
-              {tagConfigs.map(item => {
-                const isSelected = tag === item.tag;
-                const Icon = item.icon;
-                return (
-                  <TouchableOpacity
-                    key={item.tag}
-                    style={[styles.tagPill, isSelected && styles.tagPillSelected]}
-                    onPress={() => setTag(item.tag)}
-                    activeOpacity={0.7}
-                  >
-                    <Icon color={isSelected ? colors.crimson : colors.textSecondary} size={13} />
-                    <Text style={[styles.tagText, isSelected && styles.tagTextSelected]}>
-                      {item.tag}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
             </View>
 
-            {/* Urgent Tag Toggle */}
-            {tag === 'B2B Requirement' && (
-              <TouchableOpacity
-                style={[styles.urgentToggleBox, isUrgent && styles.urgentToggleBoxActive]}
-                onPress={() => setIsUrgent(!isUrgent)}
-                activeOpacity={0.8}
-              >
-                <View style={styles.urgentToggleLeft}>
-                  <View style={[styles.urgentIconBg, isUrgent && styles.urgentIconBgActive]}>
-                    <AlertCircle color={isUrgent ? colors.crimson : colors.textMuted} size={18} />
-                  </View>
-                  <View style={styles.urgentTextCol}>
-                    <View style={styles.urgentLabelRow}>
-                      <Text style={[styles.urgentTitle, isUrgent && styles.urgentTitleActive]}>
-                        High-Priority Urgent Request
-                      </Text>
-                      {isUrgent && <View style={styles.livePulseDot} />}
-                    </View>
-                    <Text style={styles.urgentSub}>
-                      Highlights this post to relevant council members immediately
-                    </Text>
-                  </View>
-                </View>
-                <View style={[styles.checkbox, isUrgent && styles.checkboxActive]}>
-                  {isUrgent && <Check color={colors.white} size={12} strokeWidth={3} />}
-                </View>
-              </TouchableOpacity>
+            {/* Expansive Full-Screen Canvas */}
+            <TouchableWithoutFeedback onPress={() => inputRef.current?.focus()}>
+              <View style={styles.canvasWrapper}>
+                <TextInput
+                  ref={inputRef}
+                  style={styles.textArea}
+                  value={content}
+                  onChangeText={setContent}
+                  placeholder="What's on your mind? Share a business requirement, collaboration ask, or council update..."
+                  placeholderTextColor="#94A3B8"
+                  multiline
+                  autoFocus
+                  textAlignVertical="top"
+                />
+              </View>
+            </TouchableWithoutFeedback>
+
+            {/* Attached Image Preview */}
+            {selectedImage && (
+              <View style={styles.imagePreviewContainer}>
+                <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+                <TouchableOpacity
+                  style={styles.removeMediaBtn}
+                  onPress={() => setSelectedImage(null)}
+                  activeOpacity={0.8}
+                >
+                  <Trash2 color={colors.white} size={14} />
+                </TouchableOpacity>
+              </View>
             )}
 
-            {/* Budget / Value Input */}
-            <View style={styles.fieldGroup}>
-              <View style={styles.fieldLabelRow}>
-                <DollarSign color={colors.crimson} size={14} />
-                <Text style={styles.inputLabel}>BUDGET OR VALUE (OPTIONAL)</Text>
-              </View>
-              <TextInput
-                style={styles.textInput}
-                value={budgetOrValue}
-                onChangeText={setBudgetOrValue}
-                placeholder="e.g. ₹ 50 Lakhs - ₹ 1 Cr"
-                placeholderTextColor={colors.textMuted}
-              />
-            </View>
-
-            {/* Post Content */}
-            <View style={styles.fieldGroup}>
-              <View style={styles.fieldLabelRow}>
-                <FileText color={colors.crimson} size={14} />
-                <Text style={styles.inputLabel}>POST DETAILS</Text>
-              </View>
-              <TextInput
-                style={[styles.textInput, styles.textArea]}
-                value={content}
-                onChangeText={setContent}
-                placeholder="Describe what product, service, machinery, or partner you are looking for..."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                numberOfLines={4}
-              />
-            </View>
-
-            {/* Document Attachment Simulation */}
-            <TouchableOpacity
-              style={[styles.attachmentBox, hasAttachment && styles.attachmentBoxActive]}
-              onPress={() => setHasAttachment(!hasAttachment)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.attachIconBg}>
-                <FileText color={hasAttachment ? colors.crimson : colors.textMuted} size={18} />
-              </View>
-              <View style={styles.attachInfo}>
-                <Text style={[styles.attachTitle, hasAttachment && styles.attachTitleActive]}>
-                  {hasAttachment ? 'Document_Details.pdf attached' : '+ Attach PDF / File (Optional)'}
-                </Text>
-                <Text style={styles.attachMeta}>
-                  {hasAttachment ? '2.4 MB • Ready to upload with post' : 'Max 10 MB (PDF format)'}
-                </Text>
-              </View>
-              <View style={[styles.checkbox, hasAttachment && styles.checkboxActive]}>
-                {hasAttachment && <Check color={colors.white} size={12} strokeWidth={3} />}
-              </View>
-            </TouchableOpacity>
-
-            {/* Submit Button */}
-            <TouchableOpacity
-              style={[styles.submitBtn, isSubmitting && styles.submitBtnDisabled]}
-              onPress={handleSubmit}
-              disabled={isSubmitting}
-              activeOpacity={0.8}
-            >
-              {isSubmitting ? (
-                <View style={styles.submitLoadingRow}>
-                  <ActivityIndicator size="small" color={colors.white} />
-                  <Text style={styles.submitBtnText}>Publishing Post...</Text>
+            {/* Attached Document Preview */}
+            {attachedDoc && (
+              <View style={styles.docPreviewCard}>
+                <View style={styles.docIconBox}>
+                  <FileText color={colors.crimson} size={22} />
                 </View>
-              ) : (
-                <View style={styles.submitRow}>
-                  <Send color={colors.white} size={16} />
-                  <Text style={styles.submitBtnText}>Publish Post to Council</Text>
+                <View style={styles.docDetails}>
+                  <Text style={styles.docName} numberOfLines={1}>
+                    {attachedDoc.name}
+                  </Text>
+                  <Text style={styles.docMeta}>
+                    {attachedDoc.type} • {attachedDoc.size}
+                  </Text>
                 </View>
-              )}
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.removeDocBtn}
+                  onPress={() => setAttachedDoc(null)}
+                  activeOpacity={0.8}
+                >
+                  <X color={colors.textSecondary} size={18} />
+                </TouchableOpacity>
+              </View>
+            )}
           </ScrollView>
-        </View>
-      </View>
+
+          {/* Docked Quick Tags Strip (Always Accessible at Bottom) */}
+          <View style={styles.dockedTagHelpersBox}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tagHelpersRow}
+              keyboardShouldPersistTaps="handled"
+            >
+              {[
+                '#B2BRequirement',
+                '#HVAC',
+                '#Manufacturing',
+                '#Pharma',
+                '#DealClosed',
+                '#Partnership',
+                '#Logistics',
+                '#Engineering',
+              ].map(t => (
+                <TouchableOpacity
+                  key={t}
+                  style={styles.quickTagPill}
+                  onPress={() => handleInsertHashtag(t)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.quickTagText}>{t}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Docked Bottom Action Toolbar */}
+          <View style={styles.bottomToolbar}>
+            <View style={styles.toolbarActions}>
+              <TouchableOpacity
+                style={[styles.toolIconBtn, !!selectedImage && styles.toolIconBtnActive]}
+                onPress={handleToggleSampleImage}
+                activeOpacity={0.7}
+              >
+                <ImageIcon color={selectedImage ? colors.crimson : colors.primary} size={20} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.toolIconBtn, !!attachedDoc && styles.toolIconBtnActive]}
+                onPress={handleToggleSampleDoc}
+                activeOpacity={0.7}
+              >
+                <FileText color={attachedDoc ? colors.crimson : colors.primary} size={20} />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.toolIconBtn}
+                onPress={() => handleInsertHashtag('#')}
+                activeOpacity={0.7}
+              >
+                <Hash color={colors.primary} size={20} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.charCountText}>
+              {content.length > 0 ? `${content.length} chars` : ''}
+            </Text>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
     </Modal>
   );
 };
 
 const styles = StyleSheet.create({
-  overlay: {
+  fullScreenContainer: {
     flex: 1,
-    backgroundColor: 'rgba(11, 25, 44, 0.65)',
-    justifyContent: 'flex-end',
-  },
-  backdrop: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    right: 0,
-  },
-  sheetContainer: {
     backgroundColor: colors.cardBg,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)',
-    maxHeight: '92%',
-    paddingBottom: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 25,
-  },
-  sheetHandle: {
-    width: 44,
-    height: 4.5,
-    borderRadius: 3,
-    backgroundColor: '#CBD5E1',
-    alignSelf: 'center',
-    marginTop: 10,
-    marginBottom: 4,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
-  },
-  headerTitleGroup: {
-    flex: 1,
-  },
-  badgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: colors.crimsonLight,
-    alignSelf: 'flex-start',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginBottom: 4,
-  },
-  headerBadge: {
-    fontSize: 9.5,
-    fontWeight: '800',
-    color: colors.crimson,
-    letterSpacing: 0.8,
+    backgroundColor: colors.cardBg,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     color: colors.textPrimary,
-    letterSpacing: -0.3,
   },
   closeBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.cardBgElevated,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
-  body: {
-    padding: 18,
-  },
-  inputLabel: {
-    fontSize: 10.5,
-    fontWeight: '800',
-    color: colors.primary,
-    letterSpacing: 0.8,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 14,
-  },
-  tagPill: {
+  publishPillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: '#F8FAFC',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 10,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-  },
-  tagPillSelected: {
-    backgroundColor: colors.crimsonLight,
-    borderColor: colors.crimson,
-  },
-  tagText: {
-    fontSize: 11.5,
-    color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  tagTextSelected: {
-    color: colors.crimson,
-    fontWeight: '800',
-  },
-  urgentToggleBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 14,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-  },
-  urgentToggleBoxActive: {
-    backgroundColor: '#FFF8F8',
-    borderColor: colors.crimson,
-  },
-  urgentToggleLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 10,
-  },
-  urgentIconBg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.cardBgElevated,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 10,
-  },
-  urgentIconBgActive: {
-    backgroundColor: colors.crimsonLight,
-  },
-  urgentTextCol: {
-    flex: 1,
-  },
-  urgentLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  livePulseDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
     backgroundColor: colors.crimson,
+    paddingHorizontal: 18,
+    paddingVertical: 9,
+    borderRadius: 22,
+    shadowColor: colors.crimson,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  urgentTitle: {
-    fontSize: 12.5,
-    fontWeight: '700',
-    color: colors.textPrimary,
+  publishPillBtnDisabled: {
+    backgroundColor: '#CBD5E1',
+    shadowOpacity: 0,
+    elevation: 0,
   },
-  urgentTitleActive: {
-    color: colors.crimson,
-    fontWeight: '800',
-  },
-  urgentSub: {
-    fontSize: 10.5,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 6,
-    borderWidth: 1.5,
-    borderColor: colors.textMuted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxActive: {
-    backgroundColor: colors.crimson,
-    borderColor: colors.crimson,
-  },
-  fieldGroup: {
-    marginBottom: 14,
-  },
-  fieldLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
-  },
-  textInput: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#E2E8F0',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-    color: colors.textPrimary,
+  publishPillText: {
+    color: colors.white,
     fontSize: 13.5,
-    fontWeight: '500',
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  keyboardContainer: {
+    flex: 1,
+  },
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  authorAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: colors.crimson,
+    marginRight: 12,
+  },
+  authorInfo: {
+    flex: 1,
+  },
+  authorName: {
+    fontSize: 15.5,
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  authorMeta: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 1,
+  },
+  audienceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.cardBgElevated,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginTop: 5,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  audienceText: {
+    fontSize: 10.5,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  scrollArea: {
+    flex: 1,
+    backgroundColor: colors.cardBg,
+  },
+  scrollBody: {
+    flexGrow: 1,
+    padding: 18,
+    paddingBottom: 24,
+  },
+  canvasWrapper: {
+    flex: 1,
+    minHeight: 280,
   },
   textArea: {
-    height: 80,
-    textAlignVertical: 'top',
+    flex: 1,
+    fontSize: 16.5,
+    color: colors.textPrimary,
+    lineHeight: 25,
+    minHeight: 280,
+    paddingTop: 8,
+    paddingBottom: 16,
+    paddingHorizontal: 0,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    fontWeight: '500',
+    ...(Platform.OS === 'web'
+      ? ({
+          outlineStyle: 'none',
+          outlineWidth: 0,
+        } as any)
+      : {}),
   },
-  attachmentBox: {
+  imagePreviewContainer: {
+    position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  imagePreview: {
+    width: '100%',
+    height: 220,
+    backgroundColor: '#E2E8F0',
+  },
+  removeMediaBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  docPreviewCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F8FAFC',
     borderRadius: 14,
-    padding: 12,
+    padding: 14,
     borderWidth: 1.5,
     borderColor: '#E2E8F0',
     marginBottom: 16,
   },
-  attachmentBoxActive: {
-    backgroundColor: '#FFF8F8',
-    borderColor: colors.crimson,
-  },
-  attachIconBg: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.cardBgElevated,
+  docIconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: colors.crimsonLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 12,
   },
-  attachInfo: {
+  docDetails: {
     flex: 1,
   },
-  attachTitle: {
-    fontSize: 12.5,
+  docName: {
+    fontSize: 13,
     fontWeight: '700',
     color: colors.textPrimary,
   },
-  attachTitleActive: {
-    color: colors.crimson,
-  },
-  attachMeta: {
-    fontSize: 10.5,
+  docMeta: {
+    fontSize: 11.5,
     color: colors.textSecondary,
     marginTop: 2,
   },
-  submitBtn: {
-    backgroundColor: colors.crimson,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 6,
-    shadowColor: colors.crimson,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 6,
+  removeDocBtn: {
+    padding: 6,
   },
-  submitBtnDisabled: {
-    opacity: 0.75,
+  dockedTagHelpersBox: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    backgroundColor: colors.cardBg,
   },
-  submitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  tagHelpersRow: {
     gap: 8,
   },
-  submitLoadingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
+  quickTagPill: {
+    backgroundColor: colors.cardBgElevated,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
   },
-  submitBtnText: {
-    color: colors.white,
-    fontSize: 14.5,
+  quickTagText: {
+    fontSize: 11.5,
+    color: colors.primary,
     fontWeight: '800',
-    letterSpacing: 0.3,
+  },
+  bottomToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+    backgroundColor: colors.cardBg,
+  },
+  toolbarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  toolIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.cardBgElevated,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+  },
+  toolIconBtnActive: {
+    backgroundColor: colors.crimsonLight,
+    borderColor: colors.crimson,
+  },
+  charCountText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
 });

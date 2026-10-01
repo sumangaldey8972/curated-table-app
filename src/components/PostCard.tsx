@@ -1,5 +1,14 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  Alert,
+  Modal,
+  Platform,
+} from 'react-native';
 import {
   Heart,
   MessageSquare,
@@ -9,6 +18,10 @@ import {
   Send,
   Building2,
   Sparkles,
+  MoreVertical,
+  Edit3,
+  Trash2,
+  X,
 } from 'lucide-react-native';
 import { Post } from '../types';
 import { colors } from '../theme/colors';
@@ -20,10 +33,84 @@ interface PostCardProps {
   onDirectMessage?: (authorId: string) => void;
 }
 
+/**
+ * Format timestamp into human-readable relative string:
+ * "Posted today", "2d ago", "1 week ago", "1 month ago", "1 year ago"
+ */
+export function formatPostTime(dateInput?: string | Date | number): string {
+  if (!dateInput) return 'Posted today';
+
+  const raw = String(dateInput).trim();
+  if (raw.toLowerCase() === 'just now') return 'Posted today';
+  if (raw.includes('ago') || raw.toLowerCase() === 'posted today') return raw;
+
+  const date = new Date(dateInput);
+  if (isNaN(date.getTime())) return raw;
+
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  if (diffMs < 0) return 'Posted today';
+
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHours = Math.floor(diffMin / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  // If same calendar day or created in past 24 hours
+  const isSameCalendarDay =
+    date.getDate() === now.getDate() &&
+    date.getMonth() === now.getMonth() &&
+    date.getFullYear() === now.getFullYear();
+
+  if (isSameCalendarDay || diffHours < 24) {
+    return 'Posted today';
+  }
+
+  if (diffDays < 7) {
+    return `${diffDays}d ago`;
+  }
+
+  const diffWeeks = Math.floor(diffDays / 7);
+  if (diffWeeks < 4) {
+    return diffWeeks === 1 ? '1 week ago' : `${diffWeeks} weeks ago`;
+  }
+
+  const diffMonths = Math.floor(diffDays / 30);
+  if (diffMonths < 12) {
+    return diffMonths === 1 ? '1 month ago' : `${diffMonths} months ago`;
+  }
+
+  const diffYears = Math.floor(diffDays / 365);
+  return diffYears === 1 ? '1 year ago' : `${diffYears} years ago`;
+}
+
 export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirectMessage }) => {
-  const { toggleLikePost, openComments, openDigitalBusinessCard, users } = useApp();
+  const {
+    toggleLikePost,
+    openComments,
+    openDigitalBusinessCard,
+    openEditPostModal,
+    deletePost,
+    currentUser,
+    isAdmin,
+    users,
+  } = useApp();
+
+  const [showMenu, setShowMenu] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [hasMoreLines, setHasMoreLines] = useState(false);
 
   const authorUser = users.find(u => u.id === post.authorId);
+  const isOwnerOrAdmin =
+    post.authorId === currentUser.id ||
+    post.authorName === currentUser.name ||
+    isAdmin;
+
+  const isLengthy =
+    post.content.length > 170 ||
+    (post.content.match(/\n/g) || []).length >= 4;
+
+  const shouldShowToggle = hasMoreLines || isLengthy;
 
   const getTagColor = (tag: Post['tag']) => {
     switch (tag) {
@@ -41,15 +128,85 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
   };
 
   const tagStyle = getTagColor(post.tag);
+  const hasCustomTag = Boolean(post.tag && post.tag !== 'General');
+  const formattedTime = formatPostTime(post.createdAt);
+  const cleanChapter = post.chapter ? post.chapter.replace(' Chapter', '') : '';
+
+  const renderFormattedContent = (text: string) => {
+    if (!text) return null;
+    const parts = text.split(/(#[a-zA-Z0-9_\u0980-\u09FF]+)/g);
+    return (
+      <View style={styles.contentContainer}>
+        <Text
+          style={styles.content}
+          numberOfLines={isExpanded ? undefined : 4}
+          ellipsizeMode="tail"
+          onTextLayout={e => {
+            if (e.nativeEvent.lines && e.nativeEvent.lines.length > 4) {
+              setHasMoreLines(true);
+            }
+          }}
+        >
+          {parts.map((part, index) => {
+            if (part.startsWith('#')) {
+              return (
+                <Text key={index} style={styles.hashtagText}>
+                  {part}
+                </Text>
+              );
+            }
+            return part;
+          })}
+        </Text>
+
+        {shouldShowToggle && (
+          <TouchableOpacity
+            onPress={() => setIsExpanded(prev => !prev)}
+            style={styles.showMoreBtn}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.showMoreText}>
+              {isExpanded ? 'Show less' : '... Show more'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   const handleShare = () => {
     Alert.alert('Post Copied', `Post from ${post.authorName} (${post.authorCompany}) copied to clipboard.`);
   };
 
+  const handleDelete = () => {
+    setShowMenu(false);
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('Are you sure you want to delete this post? This action cannot be undone.');
+      if (confirmed) {
+        deletePost(post.id);
+      }
+    } else {
+      Alert.alert(
+        'Delete Post',
+        'Are you sure you want to delete this post? This action cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => deletePost(post.id),
+          },
+        ]
+      );
+    }
+  };
+
   return (
     <View style={styles.card}>
-      {/* Top Author Row */}
+      {/* Compact Top Author Row */}
       <View style={styles.authorRow}>
+        {/* Avatar */}
         <TouchableOpacity
           style={styles.avatarContainer}
           onPress={() => {
@@ -61,55 +218,86 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
         >
           <Image source={{ uri: post.authorAvatar }} style={styles.avatar} />
           <View style={styles.verifiedIconBadge}>
-            <ShieldCheck color={colors.emerald} size={12} />
+            <ShieldCheck color={colors.emerald} size={10} />
           </View>
         </TouchableOpacity>
 
-        <View style={styles.authorInfo}>
-          <TouchableOpacity
-            onPress={() => {
-              if (authorUser) {
-                openDigitalBusinessCard(authorUser);
-              }
-            }}
-          >
-            <View style={styles.nameRow}>
-              <Text style={styles.authorName}>{post.authorName}</Text>
+        {/* Author Details */}
+        <TouchableOpacity
+          style={styles.authorInfo}
+          onPress={() => {
+            if (authorUser) {
+              openDigitalBusinessCard(authorUser);
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.nameRow}>
+            <Text style={styles.authorName} numberOfLines={1}>{post.authorName}</Text>
+            {cleanChapter ? (
               <View style={styles.chapterPill}>
-                <Text style={styles.chapterPillText}>{post.chapter.replace(' Chapter', '')}</Text>
+                <Text style={styles.chapterPillText}>{cleanChapter}</Text>
               </View>
-            </View>
-            <Text style={styles.authorDesignation} numberOfLines={1}>
-              {post.authorDesignation}
-            </Text>
-            <View style={styles.companyRow}>
-              <Building2 color={colors.primary} size={11} />
-              <Text style={styles.companyName} numberOfLines={1}>
-                {post.authorCompany}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        <Text style={styles.timeAgo}>{post.createdAt}</Text>
-      </View>
-
-      {/* Post Tag & Budget / Value Banner */}
-      <View style={styles.tagHeaderRow}>
-        <View style={[styles.tagBadge, { backgroundColor: tagStyle.bg, borderColor: tagStyle.border }]}>
-          <Sparkles color={tagStyle.text} size={12} />
-          <Text style={[styles.tagText, { color: tagStyle.text }]}>{post.tag}</Text>
-        </View>
-
-        {post.budgetOrValue && (
-          <View style={styles.valueBadge}>
-            <Text style={styles.valueBadgeText}>{post.budgetOrValue}</Text>
+            ) : null}
           </View>
-        )}
+
+          <View style={styles.subMetaRow}>
+            {post.authorDesignation ? (
+              <Text style={styles.authorDesignation} numberOfLines={1}>
+                {post.authorDesignation}
+              </Text>
+            ) : null}
+            {post.authorDesignation && post.authorCompany ? (
+              <Text style={styles.metaDot}>•</Text>
+            ) : null}
+            {post.authorCompany ? (
+              <View style={styles.companyRow}>
+                <Building2 color={colors.primary} size={10} />
+                <Text style={styles.companyName} numberOfLines={1}>
+                  {post.authorCompany}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </TouchableOpacity>
+
+        {/* Right Header: Time & More Options */}
+        <View style={styles.rightHeaderBox}>
+          <Text style={styles.timeAgo}>{formattedTime}</Text>
+
+          {isOwnerOrAdmin && (
+            <TouchableOpacity
+              style={styles.moreOptionsBtn}
+              onPress={() => setShowMenu(true)}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              activeOpacity={0.6}
+            >
+              <MoreVertical color={colors.textSecondary} size={16} />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
-      {/* Post Content */}
-      <Text style={styles.content}>{post.content}</Text>
+      {/* Optional Tag & Budget Row (only if explicitly set) */}
+      {(hasCustomTag || post.budgetOrValue) && (
+        <View style={styles.tagHeaderRow}>
+          {hasCustomTag && (
+            <View style={[styles.tagBadge, { backgroundColor: tagStyle.bg, borderColor: tagStyle.border }]}>
+              <Sparkles color={tagStyle.text} size={10} />
+              <Text style={[styles.tagText, { color: tagStyle.text }]}>{post.tag}</Text>
+            </View>
+          )}
+
+          {post.budgetOrValue ? (
+            <View style={styles.valueBadge}>
+              <Text style={styles.valueBadgeText}>{post.budgetOrValue}</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
+
+      {/* Post Content with Bold Hashtags */}
+      {renderFormattedContent(post.content)}
 
       {/* Document Attachment Preview */}
       {post.documentAttachment && (
@@ -119,14 +307,14 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
           activeOpacity={0.8}
         >
           <View style={styles.docIconBox}>
-            <FileText color={colors.crimson} size={20} />
+            <FileText color={colors.crimson} size={16} />
           </View>
           <View style={styles.docInfo}>
             <Text style={styles.docName} numberOfLines={1}>
               {post.documentAttachment.name}
             </Text>
             <Text style={styles.docMeta}>
-              {post.documentAttachment.type} • {post.documentAttachment.size} • Verified Document
+              {post.documentAttachment.type} • {post.documentAttachment.size}
             </Text>
           </View>
           <Text style={styles.docDownloadBtn}>View</Text>
@@ -152,7 +340,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
             <Heart
               color={post.isLiked ? colors.crimson : colors.textSecondary}
               fill={post.isLiked ? colors.crimson : 'transparent'}
-              size={18}
+              size={16}
             />
             <Text style={[styles.actionCount, post.isLiked && styles.activeLikedCount]}>
               {post.likesCount}
@@ -165,13 +353,13 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
             onPress={() => openComments(post)}
             activeOpacity={0.7}
           >
-            <MessageSquare color={colors.textSecondary} size={18} />
+            <MessageSquare color={colors.textSecondary} size={16} />
             <Text style={styles.actionCount}>{post.commentsCount}</Text>
           </TouchableOpacity>
 
           {/* Share */}
           <TouchableOpacity style={styles.actionBtn} onPress={handleShare} activeOpacity={0.7}>
-            <Share2 color={colors.textSecondary} size={17} />
+            <Share2 color={colors.textSecondary} size={15} />
           </TouchableOpacity>
         </View>
 
@@ -187,10 +375,63 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
           }}
           activeOpacity={0.8}
         >
-          <Send color={colors.white} size={13} />
+          <Send color={colors.white} size={11} />
           <Text style={styles.directMessageText}>Connect</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Cross-Platform Action Sheet Modal */}
+      <Modal
+        visible={showMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowMenu(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMenu(false)}
+        >
+          <View style={styles.actionMenuCard}>
+            <View style={styles.actionMenuHeader}>
+              <Text style={styles.actionMenuTitle}>Manage Post</Text>
+              <TouchableOpacity
+                onPress={() => setShowMenu(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <X color={colors.textMuted} size={16} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.actionMenuItem}
+              onPress={() => {
+                setShowMenu(false);
+                openEditPostModal(post);
+              }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.actionIconBox, { backgroundColor: colors.accentBlueLight }]}>
+                <Edit3 color={colors.accentBlue} size={15} />
+              </View>
+              <Text style={styles.actionMenuText}>Edit Post</Text>
+            </TouchableOpacity>
+
+            <View style={styles.actionDivider} />
+
+            <TouchableOpacity
+              style={styles.actionMenuItem}
+              onPress={handleDelete}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.actionIconBox, { backgroundColor: colors.crimsonLight }]}>
+                <Trash2 color={colors.crimson} size={15} />
+              </View>
+              <Text style={[styles.actionMenuText, { color: colors.crimson }]}>Delete Post</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 };
@@ -198,31 +439,31 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.cardBg,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 14,
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
     borderWidth: 1,
     borderColor: colors.cardBorder,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
+    shadowOpacity: 0.04,
+    shadowRadius: 3,
   },
   authorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: 10,
+    marginRight: 9,
   },
   avatar: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.cardBgElevated,
-    borderWidth: 1.5,
+    borderWidth: 1.2,
     borderColor: colors.crimson,
   },
   verifiedIconBadge: {
@@ -230,11 +471,12 @@ const styles = StyleSheet.create({
     bottom: -2,
     right: -2,
     backgroundColor: colors.cardBg,
-    borderRadius: 8,
-    padding: 2,
+    borderRadius: 6,
+    padding: 1,
   },
   authorInfo: {
     flex: 1,
+    paddingRight: 6,
   },
   nameRow: {
     flexDirection: 'row',
@@ -242,155 +484,195 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   authorName: {
-    fontSize: 14.5,
+    fontSize: 13.5,
     fontWeight: '700',
     color: colors.textPrimary,
   },
   chapterPill: {
     backgroundColor: colors.cardBgElevated,
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 6,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 4,
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
   chapterPillText: {
-    fontSize: 9.5,
+    fontSize: 9,
     color: colors.textSecondary,
     fontWeight: '600',
   },
-  authorDesignation: {
-    fontSize: 11.5,
-    color: colors.textSecondary,
+  rightHeaderBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginLeft: 'auto',
+  },
+  timeAgo: {
+    fontSize: 10,
+    color: colors.textMuted,
+  },
+  moreOptionsBtn: {
+    padding: 3,
+    borderRadius: 6,
+    backgroundColor: colors.cardBgElevated,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  subMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
     marginTop: 1,
+    gap: 4,
+  },
+  authorDesignation: {
+    fontSize: 11,
+    color: colors.textSecondary,
+  },
+  metaDot: {
+    fontSize: 10,
+    color: colors.textMuted,
   },
   companyRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginTop: 2,
+    gap: 3,
   },
   companyName: {
-    fontSize: 11.5,
-    fontWeight: '700',
+    fontSize: 11,
+    fontWeight: '600',
     color: colors.primary,
-  },
-  timeAgo: {
-    fontSize: 10.5,
-    color: colors.textMuted,
-    alignSelf: 'flex-start',
   },
   tagHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   tagBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
     borderWidth: 1,
-    gap: 4,
+    gap: 3,
   },
   tagText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   valueBadge: {
     backgroundColor: colors.accentBlueLight,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
     borderWidth: 1,
     borderColor: colors.accentBlueBorder,
   },
   valueBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: colors.accentBlue,
   },
+  contentContainer: {
+    marginBottom: 8,
+  },
   content: {
-    fontSize: 13.5,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 19.5,
     color: colors.textPrimary,
-    marginBottom: 12,
+  },
+  hashtagText: {
+    fontWeight: '800',
+    color: colors.textPrimary,
+  },
+  showMoreBtn: {
+    alignSelf: 'flex-start',
+    marginTop: 3,
+    paddingVertical: 2,
+    paddingRight: 6,
+  },
+  showMoreText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    color: colors.primary,
   },
   documentCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.cardBgElevated,
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 8,
+    padding: 8,
     borderWidth: 1,
     borderColor: colors.cardBorder,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   docIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
+    width: 28,
+    height: 28,
+    borderRadius: 6,
     backgroundColor: colors.crimsonLight,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 8,
   },
   docInfo: {
     flex: 1,
   },
   docName: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: colors.textPrimary,
   },
   docMeta: {
-    fontSize: 10,
+    fontSize: 9.5,
     color: colors.textMuted,
-    marginTop: 2,
+    marginTop: 1,
   },
   docDownloadBtn: {
-    fontSize: 11,
+    fontSize: 10.5,
     fontWeight: '700',
     color: colors.crimson,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
   },
   mediaContainer: {
-    borderRadius: 12,
+    borderRadius: 10,
     overflow: 'hidden',
-    marginBottom: 12,
+    marginBottom: 8,
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
   mediaImage: {
     width: '100%',
-    height: 180,
+    height: 160,
     backgroundColor: colors.cardBgElevated,
   },
   footerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 10,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: colors.cardBorder,
   },
   leftInteractions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 14,
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
+    gap: 4,
     paddingVertical: 2,
   },
   actionCount: {
-    fontSize: 12,
+    fontSize: 11.5,
     fontWeight: '600',
     color: colors.textSecondary,
   },
@@ -401,14 +683,76 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.crimson,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 7,
+    gap: 4,
   },
   directMessageText: {
-    fontSize: 11.5,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.white,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  actionMenuCard: {
+    width: '100%',
+    maxWidth: 280,
+    backgroundColor: colors.cardBg,
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  actionMenuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  actionMenuTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  actionMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    gap: 10,
+  },
+  actionIconBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionMenuText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  actionDivider: {
+    height: 1,
+    backgroundColor: colors.cardBorder,
+    marginVertical: 4,
+  },
 });
+
+

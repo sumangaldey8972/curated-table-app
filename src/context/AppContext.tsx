@@ -38,6 +38,14 @@ import {
 } from '../services/authApi';
 import { getMyProfileRequest } from '../services/profileApi';
 import { listMembers } from '../services/adminApi';
+import {
+  fetchFeedPosts,
+  createPostRequest,
+  updatePostRequest,
+  deletePostRequest,
+  toggleLikePostRequest,
+  addPostCommentRequest,
+} from '../services/postApi';
 import { ProfileStatus, ProfileCompletion } from '../types';
 import { tokenStorage } from '../utils/tokenStorage';
 
@@ -101,7 +109,19 @@ interface AppContextType {
   switchUser: (userId: string) => void;
   toggleLikePost: (postId: string) => void;
   addComment: (postId: string, text: string) => void;
-  createPost: (content: string, tag: Post['tag'], urgentRequirement?: boolean, budgetOrValue?: string) => void;
+  createPost: (
+    content: string,
+    optionsOrTag?: any,
+    urgentRequirement?: boolean,
+    budgetOrValue?: string
+  ) => Promise<void> | void;
+  editPost: (
+    postId: string,
+    content: string,
+    optionsOrTag?: any
+  ) => Promise<void>;
+  deletePost: (postId: string) => Promise<void>;
+  refreshPosts: () => Promise<void>;
   logOneToOne: (withUserId: string, date: string, time: string, location: string, agenda: string) => void;
   markMeetingCompleted: (meetingId: string, minutes?: string) => void;
   giveReferral: (memberId: string, clientName: string, clientContact: string, serviceNeeded: string, estimatedValue: string, urgency: Referral['urgency']) => void;
@@ -125,7 +145,9 @@ interface AppContextType {
   closeGiveReferral: () => void;
   openRecordDeal: () => void;
   closeRecordDeal: () => void;
+  editingPost: Post | null;
   openCreatePost: () => void;
+  openEditPostModal: (post: Post) => void;
   closeCreatePost: () => void;
   openComments: (post: Post) => void;
   closeComments: () => void;
@@ -177,6 +199,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [targetReferralUser, setTargetReferralUser] = useState<User | null>(null);
   const [showRecordDealModal, setShowRecordDealModal] = useState(false);
   const [showCreatePostModal, setShowCreatePostModal] = useState(false);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [showCommentsModal, setShowCommentsModal] = useState(false);
   const [selectedPostForComments, setSelectedPostForComments] = useState<Post | null>(null);
   const [showRequestAdminAccessModal, setShowRequestAdminAccessModal] = useState(false);
@@ -195,6 +218,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     } catch {
       // Keep existing users if backend is unreachable
+    }
+  };
+
+  /** Fetch live posts from the backend feed. */
+  const refreshPosts = async () => {
+    try {
+      const res = await fetchFeedPosts({ page: 1, limit: 20 });
+      if (res && Array.isArray(res.items) && res.items.length > 0) {
+        setPosts(res.items);
+      }
+    } catch {
+      // Keep existing posts if backend is offline
     }
   };
 
@@ -251,6 +286,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setCurrentUser(adaptBackendUser(backendUser, profileData));
         setIsAuthenticated(true);
         void refreshMembers();
+        void refreshPosts();
       } catch {
         // Token invalid / expired / server unreachable — drop it and show login.
         await tokenStorage.clear();
@@ -290,6 +326,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setCurrentUser(adaptBackendUser(user, profileData));
     setIsAuthenticated(true);
     void refreshMembers();
+    void refreshPosts();
   };
 
   const logout = () => {
@@ -345,7 +382,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Actions
-  const toggleLikePost = (postId: string) => {
+  const toggleLikePost = async (postId: string) => {
     setPosts(prev =>
       prev.map(post => {
         if (post.id === postId) {
@@ -353,18 +390,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           return {
             ...post,
             isLiked,
-            likesCount: isLiked ? post.likesCount + 1 : post.likesCount - 1,
+            likesCount: isLiked ? post.likesCount + 1 : Math.max(0, post.likesCount - 1),
           };
         }
         return post;
       })
     );
+
+    try {
+      const res = await toggleLikePostRequest(postId);
+      if (res) {
+        setPosts(prev =>
+          prev.map(post =>
+            post.id === postId ? { ...post, isLiked: res.isLiked, likesCount: res.likesCount } : post
+          )
+        );
+      }
+    } catch (err) {
+      console.warn('[toggleLikePost] backend sync failed:', err);
+    }
   };
 
-  const addComment = (postId: string, text: string) => {
+  const addComment = async (postId: string, text: string) => {
     if (!text.trim()) return;
 
-    const newComment: PostComment = {
+    const tempComment: PostComment = {
       id: `c_${Date.now()}`,
       postId,
       authorName: currentUser.name,
@@ -376,7 +426,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     setComments(prev => ({
       ...prev,
-      [postId]: [...(prev[postId] || []), newComment],
+      [postId]: [...(prev[postId] || []), tempComment],
     }));
 
     setPosts(prev =>
@@ -390,34 +440,141 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return p;
       })
     );
+
+    try {
+      const res = await addPostCommentRequest(postId, text.trim());
+      if (res && res.id) {
+        setComments(prev => ({
+          ...prev,
+          [postId]: (prev[postId] || []).map(c => (c.id === tempComment.id ? res : c)),
+        }));
+      }
+    } catch (err) {
+      console.warn('[addComment] backend sync failed:', err);
+    }
   };
 
-  const createPost = (
+  const createPost = async (
     content: string,
-    tag: Post['tag'],
+    optionsOrTag?: any,
     urgentRequirement?: boolean,
     budgetOrValue?: string
   ) => {
-    const newPost: Post = {
-      id: `post_${Date.now()}`,
+    let mediaUrl: string | undefined;
+    let documentAttachment: any;
+    let tag: Post['tag'] = 'General';
+    let isUrgent = false;
+    let budget: string | undefined;
+
+    if (typeof optionsOrTag === 'object' && optionsOrTag !== null) {
+      mediaUrl = optionsOrTag.mediaUrl;
+      documentAttachment = optionsOrTag.documentAttachment;
+      tag = optionsOrTag.tag || 'General';
+      isUrgent = !!optionsOrTag.urgentRequirement;
+      budget = optionsOrTag.budgetOrValue;
+    } else if (typeof optionsOrTag === 'string') {
+      tag = optionsOrTag as Post['tag'];
+      isUrgent = !!urgentRequirement;
+      budget = budgetOrValue;
+    }
+
+    const tempId = `post_${Date.now()}`;
+    const optimisticPost: Post = {
+      id: tempId,
       authorId: currentUser.id,
       authorName: currentUser.name,
       authorDesignation: currentUser.designation,
       authorCompany: currentUser.companyName,
       authorAvatar: currentUser.avatar,
-      chapter: currentUser.chapter,
+      chapter: currentUser.chapter || 'Kolkata Central Chapter',
       createdAt: 'Just now',
       content,
-      tag,
-      urgentRequirement,
-      budgetOrValue,
+      tag: tag || 'General',
+      mediaUrl,
+      documentAttachment,
+      urgentRequirement: isUrgent,
+      budgetOrValue: budget,
       likesCount: 0,
       isLiked: false,
       commentsCount: 0,
       sharesCount: 0,
     };
 
-    setPosts(prev => [newPost, ...prev]);
+    setPosts(prev => [optimisticPost, ...prev]);
+
+    try {
+      const serverPost = await createPostRequest({
+        content,
+        mediaUrl,
+        documentAttachment,
+      });
+      if (serverPost && serverPost.id) {
+        setPosts(prev =>
+          prev.map(p => (p.id === tempId ? { ...serverPost, tag: serverPost.tag || tag } : p))
+        );
+      }
+    } catch (err) {
+      console.warn('[createPost] backend creation failed:', err);
+    }
+  };
+
+  const editPost = async (
+    postId: string,
+    content: string,
+    optionsOrTag?: any
+  ) => {
+    let mediaUrl: string | undefined;
+    let documentAttachment: any;
+    let tag: Post['tag'] = 'General';
+
+    if (typeof optionsOrTag === 'object' && optionsOrTag !== null) {
+      mediaUrl = optionsOrTag.mediaUrl;
+      documentAttachment = optionsOrTag.documentAttachment;
+      tag = optionsOrTag.tag || 'General';
+    }
+
+    // Optimistically update in feed
+    setPosts(prev =>
+      prev.map(p => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            content,
+            mediaUrl: mediaUrl !== undefined ? mediaUrl : p.mediaUrl,
+            documentAttachment:
+              documentAttachment !== undefined ? documentAttachment : p.documentAttachment,
+            tag: tag || p.tag,
+          };
+        }
+        return p;
+      })
+    );
+
+    try {
+      const updated = await updatePostRequest(postId, {
+        content,
+        mediaUrl,
+        documentAttachment,
+      });
+      if (updated && updated.id) {
+        setPosts(prev =>
+          prev.map(p => (p.id === postId ? { ...p, ...updated, tag: updated.tag || p.tag } : p))
+        );
+      }
+    } catch (err) {
+      console.warn('[editPost] backend update failed:', err);
+    }
+  };
+
+  const deletePost = async (postId: string) => {
+    // Optimistically remove from feed
+    setPosts(prev => prev.filter(p => p.id !== postId));
+
+    try {
+      await deletePostRequest(postId);
+    } catch (err) {
+      console.warn('[deletePost] backend deletion failed:', err);
+    }
   };
 
   const logOneToOne = (
@@ -676,8 +833,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const openRecordDeal = () => setShowRecordDealModal(true);
   const closeRecordDeal = () => setShowRecordDealModal(false);
 
-  const openCreatePost = () => setShowCreatePostModal(true);
-  const closeCreatePost = () => setShowCreatePostModal(false);
+  const openCreatePost = () => {
+    setEditingPost(null);
+    setShowCreatePostModal(true);
+  };
+  const openEditPostModal = (post: Post) => {
+    setEditingPost(post);
+    setShowCreatePostModal(true);
+  };
+  const closeCreatePost = () => {
+    setShowCreatePostModal(false);
+    setEditingPost(null);
+  };
 
   const openComments = (post: Post) => {
     setSelectedPostForComments(post);
@@ -751,6 +918,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         targetReferralUser,
         showRecordDealModal,
         showCreatePostModal,
+        editingPost,
         showCommentsModal,
         selectedPostForComments,
         showRequestAdminAccessModal,
@@ -767,6 +935,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         toggleLikePost,
         addComment,
         createPost,
+        editPost,
+        deletePost,
+        refreshPosts,
         logOneToOne,
         markMeetingCompleted,
         giveReferral,
@@ -790,6 +961,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         openRecordDeal,
         closeRecordDeal,
         openCreatePost,
+        openEditPostModal,
         closeCreatePost,
         openComments,
         closeComments,
