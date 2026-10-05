@@ -46,6 +46,7 @@ import {
   toggleLikePostRequest,
   addPostCommentRequest,
 } from '../services/postApi';
+import { subscribeToFeedRealtime } from '../services/realtimeSubscription';
 import { ProfileStatus, ProfileCompletion } from '../types';
 import { tokenStorage } from '../utils/tokenStorage';
 
@@ -297,6 +298,56 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     return () => {
       cancelled = true;
+    };
+  }, []);
+
+  // Supabase Realtime Feed Subscription (broadcast listener)
+  useEffect(() => {
+    const unsubscribe = subscribeToFeedRealtime({
+      onNewPost: (incomingPost: Post) => {
+        console.log('[AppContext] Received live new_post:', incomingPost.id, incomingPost.authorName);
+        setPosts(prev => {
+          // If post with this id already exists, replace it
+          const exists = prev.some(p => p.id === incomingPost.id);
+          if (exists) {
+            return prev.map(p => (p.id === incomingPost.id ? { ...p, ...incomingPost } : p));
+          }
+
+          // If current user created an optimistic post with same content recently, replace it
+          const tempIndex = prev.findIndex(
+            p =>
+              p.id.startsWith('post_') &&
+              p.authorId === incomingPost.authorId &&
+              p.content === incomingPost.content
+          );
+
+          if (tempIndex !== -1) {
+            const next = [...prev];
+            next[tempIndex] = incomingPost;
+            return next;
+          }
+
+          // Otherwise prepend new post to feed
+          return [incomingPost, ...prev];
+        });
+      },
+      onUpdatePost: (updatedPost: Post) => {
+        console.log('[AppContext] Received live update_post:', updatedPost.id);
+        setPosts(prev =>
+          prev.map(p => (p.id === updatedPost.id ? { ...p, ...updatedPost } : p))
+        );
+      },
+      onDeletePost: (payload) => {
+        const targetId = payload.id || payload.deletedPostId;
+        console.log('[AppContext] Received live delete_post:', targetId);
+        if (targetId) {
+          setPosts(prev => prev.filter(p => p.id !== targetId));
+        }
+      },
+    });
+
+    return () => {
+      unsubscribe();
     };
   }, []);
 

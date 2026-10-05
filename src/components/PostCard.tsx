@@ -9,6 +9,7 @@ import {
   Modal,
   Platform,
 } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import {
   Heart,
   MessageSquare,
@@ -22,6 +23,9 @@ import {
   Edit3,
   Trash2,
   X,
+  Copy,
+  UserCheck,
+  Flag,
 } from 'lucide-react-native';
 import { Post } from '../types';
 import { colors } from '../theme/colors';
@@ -100,10 +104,15 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
   const [isExpanded, setIsExpanded] = useState(false);
   const [hasMoreLines, setHasMoreLines] = useState(false);
 
-  const authorUser = users.find(u => u.id === post.authorId);
+  const authorUser = users.find(
+    u =>
+      u.id === post.authorId ||
+      u.name?.toLowerCase() === post.authorName?.toLowerCase()
+  );
+
   const isOwnerOrAdmin =
-    post.authorId === currentUser.id ||
-    post.authorName === currentUser.name ||
+    String(post.authorId) === String(currentUser.id) ||
+    post.authorName?.trim().toLowerCase() === currentUser.name?.trim().toLowerCase() ||
     isAdmin;
 
   const isLengthy =
@@ -179,6 +188,25 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
     Alert.alert('Post Copied', `Post from ${post.authorName} (${post.authorCompany}) copied to clipboard.`);
   };
 
+  const handleCopyContent = async () => {
+    setShowMenu(false);
+    try {
+      await Clipboard.setStringAsync(post.content);
+      Alert.alert('Copied! 📋', 'Post text copied to clipboard.');
+    } catch {
+      Alert.alert('Post Copied', `Post from ${post.authorName} copied to clipboard.`);
+    }
+  };
+
+  const handleReportPost = () => {
+    setShowMenu(false);
+    Alert.alert(
+      'Report Post',
+      'Thank you for bringing this to our attention. Our council moderation team will review this post.',
+      [{ text: 'OK' }]
+    );
+  };
+
   const handleDelete = () => {
     setShowMenu(false);
     if (Platform.OS === 'web') {
@@ -216,7 +244,14 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
           }}
           activeOpacity={0.8}
         >
-          <Image source={{ uri: post.authorAvatar }} style={styles.avatar} />
+          <Image
+            source={{
+              uri:
+                post.authorAvatar ||
+                `https://ui-avatars.com/api/?name=${encodeURIComponent(post.authorName || 'Member')}&background=0D1B2A&color=fff&bold=true`,
+            }}
+            style={styles.avatar}
+          />
           <View style={styles.verifiedIconBadge}>
             <ShieldCheck color={colors.emerald} size={10} />
           </View>
@@ -261,20 +296,18 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
           </View>
         </TouchableOpacity>
 
-        {/* Right Header: Time & More Options */}
+        {/* Right Header: Time & Always Visible Three Dots Button */}
         <View style={styles.rightHeaderBox}>
           <Text style={styles.timeAgo}>{formattedTime}</Text>
 
-          {isOwnerOrAdmin && (
-            <TouchableOpacity
-              style={styles.moreOptionsBtn}
-              onPress={() => setShowMenu(true)}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              activeOpacity={0.6}
-            >
-              <MoreVertical color={colors.textSecondary} size={16} />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.moreOptionsBtn}
+            onPress={() => setShowMenu(true)}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            activeOpacity={0.6}
+          >
+            <MoreVertical color={colors.textSecondary} size={16} />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -394,7 +427,9 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
         >
           <View style={styles.actionMenuCard}>
             <View style={styles.actionMenuHeader}>
-              <Text style={styles.actionMenuTitle}>Manage Post</Text>
+              <Text style={styles.actionMenuTitle}>
+                {isOwnerOrAdmin ? 'Manage Post' : 'Post Options'}
+              </Text>
               <TouchableOpacity
                 onPress={() => setShowMenu(false)}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -403,32 +438,78 @@ export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirec
               </TouchableOpacity>
             </View>
 
+            {isOwnerOrAdmin && (
+              <>
+                <TouchableOpacity
+                  style={styles.actionMenuItem}
+                  onPress={() => {
+                    setShowMenu(false);
+                    openEditPostModal(post);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.actionIconBox, { backgroundColor: colors.accentBlueLight }]}>
+                    <Edit3 color={colors.accentBlue} size={15} />
+                  </View>
+                  <Text style={styles.actionMenuText}>Edit Post</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.actionMenuItem}
+                  onPress={handleDelete}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.actionIconBox, { backgroundColor: colors.crimsonLight }]}>
+                    <Trash2 color={colors.crimson} size={15} />
+                  </View>
+                  <Text style={[styles.actionMenuText, { color: colors.crimson }]}>Delete Post</Text>
+                </TouchableOpacity>
+
+                <View style={styles.actionDivider} />
+              </>
+            )}
+
             <TouchableOpacity
               style={styles.actionMenuItem}
-              onPress={() => {
-                setShowMenu(false);
-                openEditPostModal(post);
-              }}
+              onPress={handleCopyContent}
               activeOpacity={0.7}
             >
-              <View style={[styles.actionIconBox, { backgroundColor: colors.accentBlueLight }]}>
-                <Edit3 color={colors.accentBlue} size={15} />
+              <View style={[styles.actionIconBox, { backgroundColor: colors.cardBgElevated }]}>
+                <Copy color={colors.primary} size={15} />
               </View>
-              <Text style={styles.actionMenuText}>Edit Post</Text>
+              <Text style={styles.actionMenuText}>Copy Post Text</Text>
             </TouchableOpacity>
 
-            <View style={styles.actionDivider} />
+            {!isOwnerOrAdmin && authorUser && (
+              <TouchableOpacity
+                style={styles.actionMenuItem}
+                onPress={() => {
+                  setShowMenu(false);
+                  openDigitalBusinessCard(authorUser);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.actionIconBox, { backgroundColor: colors.emeraldLight }]}>
+                  <UserCheck color={colors.emerald} size={15} />
+                </View>
+                <Text style={styles.actionMenuText}>View Business Card</Text>
+              </TouchableOpacity>
+            )}
 
-            <TouchableOpacity
-              style={styles.actionMenuItem}
-              onPress={handleDelete}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.actionIconBox, { backgroundColor: colors.crimsonLight }]}>
-                <Trash2 color={colors.crimson} size={15} />
-              </View>
-              <Text style={[styles.actionMenuText, { color: colors.crimson }]}>Delete Post</Text>
-            </TouchableOpacity>
+            {!isOwnerOrAdmin && (
+              <TouchableOpacity
+                style={styles.actionMenuItem}
+                onPress={handleReportPost}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.actionIconBox, { backgroundColor: colors.cardBgElevated }]}>
+                  <Flag color={colors.textMuted} size={15} />
+                </View>
+                <Text style={[styles.actionMenuText, { color: colors.textSecondary }]}>
+                  Report Post
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -476,17 +557,20 @@ const styles = StyleSheet.create({
   },
   authorInfo: {
     flex: 1,
-    paddingRight: 6,
+    minWidth: 0,
+    paddingRight: 8,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    flexWrap: 'nowrap',
   },
   authorName: {
     fontSize: 13.5,
     fontWeight: '700',
     color: colors.textPrimary,
+    flexShrink: 1,
   },
   chapterPill: {
     backgroundColor: colors.cardBgElevated,
@@ -495,6 +579,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     borderWidth: 1,
     borderColor: colors.cardBorder,
+    flexShrink: 0,
   },
   chapterPillText: {
     fontSize: 9,
@@ -506,19 +591,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
     marginLeft: 'auto',
+    flexShrink: 0,
   },
   timeAgo: {
     fontSize: 10,
     color: colors.textMuted,
+    flexShrink: 0,
   },
   moreOptionsBtn: {
-    padding: 3,
+    padding: 4,
     borderRadius: 6,
     backgroundColor: colors.cardBgElevated,
     borderWidth: 1,
     borderColor: colors.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   subMetaRow: {
     flexDirection: 'row',
