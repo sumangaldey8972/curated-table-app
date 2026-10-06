@@ -44,7 +44,10 @@ import {
   updatePostRequest,
   deletePostRequest,
   toggleLikePostRequest,
+  fetchPostCommentsRequest,
   addPostCommentRequest,
+  updatePostCommentRequest,
+  deletePostCommentRequest,
 } from '../services/postApi';
 import { subscribeToFeedRealtime } from '../services/realtimeSubscription';
 import { ProfileStatus, ProfileCompletion } from '../types';
@@ -64,6 +67,7 @@ interface AppContextType {
   messageThreads: MessageThread[];
   messages: Record<string, Message[]>;
   comments: Record<string, PostComment[]>;
+  isLoadingComments: boolean;
   notifications: AppNotification[];
   requestedAdminAccessIds: string[];
   isAuthenticated: boolean;
@@ -109,7 +113,9 @@ interface AppContextType {
   register: (newUser: Partial<User>) => void;
   switchUser: (userId: string) => void;
   toggleLikePost: (postId: string) => void;
-  addComment: (postId: string, text: string) => void;
+  addComment: (postId: string, text: string, parentCommentId?: string | null) => Promise<void> | void;
+  editComment: (postId: string, commentId: string, text: string) => Promise<void>;
+  deleteComment: (postId: string, commentId: string) => Promise<void>;
   createPost: (
     content: string,
     optionsOrTag?: any,
@@ -177,6 +183,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [messageThreads, setMessageThreads] = useState<MessageThread[]>(MOCK_MESSAGE_THREADS);
   const [messages, setMessages] = useState<Record<string, Message[]>>(MOCK_MESSAGES);
   const [comments, setComments] = useState<Record<string, PostComment[]>>(MOCK_COMMENTS);
+  const [isLoadingComments, setIsLoadingComments] = useState<boolean>(false);
   const [notifications, setNotifications] = useState<AppNotification[]>(MOCK_NOTIFICATIONS);
   const [requestedAdminAccessIds, setRequestedAdminAccessIds] = useState<string[]>([]);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -344,6 +351,96 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setPosts(prev => prev.filter(p => p.id !== targetId));
         }
       },
+      onNewComment: (incomingComment: PostComment) => {
+        console.log('[AppContext] Received live new_comment for post:', incomingComment.postId);
+        setComments(prev => {
+          const currentList = prev[incomingComment.postId] || [];
+          const exists = currentList.some(c => c.id === incomingComment.id);
+          if (exists) {
+            return {
+              ...prev,
+              [incomingComment.postId]: currentList.map(c =>
+                c.id === incomingComment.id ? { ...c, ...incomingComment } : c
+              ),
+            };
+          }
+
+          // Check if temp optimistic comment matches
+          const tempIndex = currentList.findIndex(
+            c =>
+              c.id.startsWith('c_') &&
+              c.authorName === incomingComment.authorName &&
+              c.text === incomingComment.text
+          );
+
+          if (tempIndex !== -1) {
+            const next = [...currentList];
+            next[tempIndex] = incomingComment;
+            return {
+              ...prev,
+              [incomingComment.postId]: next,
+            };
+          }
+
+          return {
+            ...prev,
+            [incomingComment.postId]: [...currentList, incomingComment],
+          };
+        });
+
+        // Update post comments count in feed
+        setPosts(prev =>
+          prev.map(p =>
+            p.id === incomingComment.postId
+              ? {
+                  ...p,
+                  commentsCount: (incomingComment as any).commentsCount !== undefined
+                    ? (incomingComment as any).commentsCount
+                    : p.commentsCount + 1,
+                }
+              : p
+          )
+        );
+      },
+      onUpdateComment: (incomingComment: PostComment) => {
+        console.log('[AppContext] Received live update_comment for post:', incomingComment.postId, incomingComment.id);
+        setComments(prev => {
+          const currentList = prev[incomingComment.postId] || [];
+          return {
+            ...prev,
+            [incomingComment.postId]: currentList.map(c =>
+              c.id === incomingComment.id ? { ...c, ...incomingComment } : c
+            ),
+          };
+        });
+      },
+      onDeleteComment: (payload) => {
+        console.log('[AppContext] Received live delete_comment:', payload.postId, payload.commentId);
+        const targetCommentId = payload.commentId || payload.deletedCommentId;
+        const deletedIds = new Set<string>((payload as any).deletedCommentIds || (targetCommentId ? [targetCommentId] : []));
+        if (targetCommentId) {
+          deletedIds.add(targetCommentId);
+        }
+        if (deletedIds.size > 0) {
+          setComments(prev => ({
+            ...prev,
+            [payload.postId]: (prev[payload.postId] || []).filter(c => !deletedIds.has(c.id) && c.parentCommentId !== targetCommentId),
+          }));
+        }
+
+        setPosts(prev =>
+          prev.map(p =>
+            p.id === payload.postId
+              ? {
+                  ...p,
+                  commentsCount: payload.commentsCount !== undefined
+                    ? payload.commentsCount
+                    : Math.max(0, p.commentsCount - 1),
+                }
+              : p
+          )
+        );
+      },
     });
 
     return () => {
@@ -462,17 +559,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const addComment = async (postId: string, text: string) => {
+  const addComment = async (postId: string, text: string, parentCommentId?: string | null) => {
     if (!text.trim()) return;
 
     const tempComment: PostComment = {
       id: `c_${Date.now()}`,
       postId,
+      authorId: currentUser.id,
       authorName: currentUser.name,
       authorCompany: currentUser.companyName,
+      authorDesignation: currentUser.designation,
       authorAvatar: currentUser.avatar,
       text: text.trim(),
       createdAt: 'Just now',
+      parentCommentId: parentCommentId || null,
     };
 
     setComments(prev => ({
@@ -493,7 +593,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
 
     try {
-      const res = await addPostCommentRequest(postId, text.trim());
+      const res = await addPostCommentRequest(postId, text.trim(), parentCommentId);
       if (res && res.id) {
         setComments(prev => ({
           ...prev,
@@ -502,6 +602,68 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     } catch (err) {
       console.warn('[addComment] backend sync failed:', err);
+    }
+  };
+
+  const editComment = async (postId: string, commentId: string, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    // Optimistically update comment
+    setComments(prev => ({
+      ...prev,
+      [postId]: (prev[postId] || []).map(c =>
+        c.id === commentId ? { ...c, text: trimmed } : c
+      ),
+    }));
+
+    try {
+      const res = await updatePostCommentRequest(postId, commentId, trimmed);
+      if (res && res.id) {
+        setComments(prev => ({
+          ...prev,
+          [postId]: (prev[postId] || []).map(c => (c.id === commentId ? res : c)),
+        }));
+      }
+    } catch (err) {
+      console.warn('[editComment] backend sync failed:', err);
+    }
+  };
+
+  const deleteComment = async (postId: string, commentId: string) => {
+    // Optimistically remove comment and all its nested child replies
+    let removedCount = 1;
+    setComments(prev => {
+      const currentList = prev[postId] || [];
+      const toRemove = new Set<string>([commentId]);
+      currentList.forEach(c => {
+        if (c.parentCommentId === commentId) {
+          toRemove.add(c.id);
+        }
+      });
+      removedCount = toRemove.size;
+      return {
+        ...prev,
+        [postId]: currentList.filter(c => !toRemove.has(c.id)),
+      };
+    });
+
+    setPosts(prev =>
+      prev.map(p => {
+        if (p.id === postId) {
+          return {
+            ...p,
+            commentsCount: Math.max(0, p.commentsCount - removedCount),
+          };
+        }
+        return p;
+      })
+    );
+
+    try {
+      await deletePostCommentRequest(postId, commentId);
+    } catch (err) {
+      console.warn('[deleteComment] backend sync failed:', err);
     }
   };
 
@@ -897,9 +1059,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setEditingPost(null);
   };
 
-  const openComments = (post: Post) => {
+  const openComments = async (post: Post) => {
     setSelectedPostForComments(post);
     setShowCommentsModal(true);
+    setIsLoadingComments(true);
+    try {
+      const res = await fetchPostCommentsRequest(post.id, 1, 50);
+      if (res && Array.isArray(res.items)) {
+        setComments(prev => ({
+          ...prev,
+          [post.id]: res.items,
+        }));
+      }
+    } catch (err) {
+      console.warn('[openComments] Failed to fetch comments:', err);
+    } finally {
+      setIsLoadingComments(false);
+    }
   };
   const closeComments = () => {
     setShowCommentsModal(false);
@@ -947,6 +1123,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         messageThreads,
         messages,
         comments,
+        isLoadingComments,
         notifications,
         requestedAdminAccessIds,
         isAuthenticated,
@@ -985,6 +1162,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         switchUser,
         toggleLikePost,
         addComment,
+        editComment,
+        deleteComment,
         createPost,
         editPost,
         deletePost,

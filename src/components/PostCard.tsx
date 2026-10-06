@@ -38,54 +38,65 @@ interface PostCardProps {
 }
 
 /**
- * Format timestamp into human-readable relative string:
- * "Posted today", "2d ago", "1 week ago", "1 month ago", "1 year ago"
+ * Format timestamp into standard human-readable relative time string:
+ * "Just now", "5m ago", "2h ago", "Yesterday", "2d ago", "1w ago", "1mo ago", "1y ago"
  */
 export function formatPostTime(dateInput?: string | Date | number): string {
-  if (!dateInput) return 'Posted today';
+  if (!dateInput) return 'Just now';
 
   const raw = String(dateInput).trim();
-  if (raw.toLowerCase() === 'just now') return 'Posted today';
-  if (raw.includes('ago') || raw.toLowerCase() === 'posted today') return raw;
+  if (raw.toLowerCase() === 'just now') return 'Just now';
+  if (raw.toLowerCase() === 'posted today') return 'Today';
+  if (raw.includes('ago')) return raw;
 
   const date = new Date(dateInput);
   if (isNaN(date.getTime())) return raw;
 
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
-  if (diffMs < 0) return 'Posted today';
+  if (diffMs < 0) return 'Just now';
 
   const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) {
+    return 'Just now';
+  }
+
   const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) {
+    return `${diffMin}m ago`;
+  }
+
   const diffHours = Math.floor(diffMin / 60);
-  const diffDays = Math.floor(diffHours / 24);
 
-  // If same calendar day or created in past 24 hours
-  const isSameCalendarDay =
-    date.getDate() === now.getDate() &&
-    date.getMonth() === now.getMonth() &&
-    date.getFullYear() === now.getFullYear();
+  // Accurate calendar day difference in local time
+  const nowDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const postDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const calendarDays = Math.round((nowDate.getTime() - postDate.getTime()) / (1000 * 60 * 60 * 24));
 
-  if (isSameCalendarDay || diffHours < 24) {
-    return 'Posted today';
+  if (calendarDays === 0) {
+    return `${diffHours}h ago`;
   }
 
-  if (diffDays < 7) {
-    return `${diffDays}d ago`;
+  if (calendarDays === 1) {
+    return 'Yesterday';
   }
 
-  const diffWeeks = Math.floor(diffDays / 7);
+  if (calendarDays < 7) {
+    return `${calendarDays}d ago`;
+  }
+
+  const diffWeeks = Math.floor(calendarDays / 7);
   if (diffWeeks < 4) {
-    return diffWeeks === 1 ? '1 week ago' : `${diffWeeks} weeks ago`;
+    return diffWeeks === 1 ? '1w ago' : `${diffWeeks}w ago`;
   }
 
-  const diffMonths = Math.floor(diffDays / 30);
+  const diffMonths = Math.floor(calendarDays / 30);
   if (diffMonths < 12) {
-    return diffMonths === 1 ? '1 month ago' : `${diffMonths} months ago`;
+    return diffMonths === 1 ? '1mo ago' : `${diffMonths}mo ago`;
   }
 
-  const diffYears = Math.floor(diffDays / 365);
-  return diffYears === 1 ? '1 year ago' : `${diffYears} years ago`;
+  const diffYears = Math.floor(calendarDays / 365);
+  return diffYears === 1 ? '1y ago' : `${diffYears}y ago`;
 }
 
 export const PostCard: React.FC<PostCardProps> = ({ post, onOpenProfile, onDirectMessage }) => {

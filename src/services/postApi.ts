@@ -111,16 +111,44 @@ export async function fetchPostCommentsRequest(
 }
 
 /**
- * Add a comment to a post.
+ * Add a comment to a post (or a reply).
  */
 export async function addPostCommentRequest(
   postId: string,
-  text: string
+  text: string,
+  parentCommentId?: string | null
 ): Promise<PostComment> {
   return apiRequest<PostComment>(`/posts/${postId}/comments`, {
     method: 'POST',
+    body: { text, parentCommentId: parentCommentId || undefined },
+  });
+}
+
+/**
+ * Update a comment on a post.
+ */
+export async function updatePostCommentRequest(
+  postId: string,
+  commentId: string,
+  text: string
+): Promise<PostComment> {
+  return apiRequest<PostComment>(`/posts/${postId}/comments/${commentId}`, {
+    method: 'PUT',
     body: { text },
   });
+}
+
+/**
+ * Delete a comment from a post.
+ */
+export async function deletePostCommentRequest(
+  postId: string,
+  commentId: string
+): Promise<{ success: boolean; deletedCommentId: string; commentsCount: number }> {
+  return apiRequest<{ success: boolean; deletedCommentId: string; commentsCount: number }>(
+    `/posts/${postId}/comments/${commentId}`,
+    { method: 'DELETE' }
+  );
 }
 
 /**
@@ -134,3 +162,4 @@ export async function deletePostRequest(
     { method: 'DELETE' }
   );
 }
+

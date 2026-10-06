@@ -129,11 +129,14 @@ export interface Post {
 export interface PostComment {
   id: string;
   postId: string;
+  authorId?: string;
   authorName: string;
-  authorCompany: string;
-  authorAvatar: string;
+  authorCompany?: string;
+  authorDesignation?: string;
+  authorAvatar?: string;
   text: string;
   createdAt: string;
+  parentCommentId?: string | null;
 }
 
 export interface Community {
